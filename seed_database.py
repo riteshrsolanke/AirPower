@@ -418,7 +418,8 @@ def create_alerts(db, aircraft_ids):
 
 
 def seed_audit_logs(db):
-    """Seed some demo audit log entries."""
+    """Seed some demo audit log entries with chained cryptographic hashes."""
+    from backend.app.services.audit import log_audit
     admin = db.query(User).filter(User.username == "admin").first()
     if not admin:
         return
@@ -432,17 +433,8 @@ def seed_audit_logs(db):
         ("UNAUTHORIZED_ACCESS_ATTEMPT", "/api/audit-logs", "DENIED"),
     ]
     for action, resource, result in events:
-        log = AuditLog(
-            user_id=admin.id,
-            username="admin",
-            role="ADMIN",
-            action=action,
-            resource=resource,
-            result=result,
-            ip_address="127.0.0.1",
-        )
-        db.add(log)
-    db.commit()
+        log_audit(db, admin, action, resource, result, "127.0.0.1")
+
 
 
 def main():

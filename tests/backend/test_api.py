@@ -7,7 +7,17 @@ client = TestClient(app)
 @pytest.fixture(scope="module")
 def admin_token():
     res = client.post("/api/auth/login", json={"username": "admin", "password": "Admin@Demo2026!"})
-    return res.json()["access_token"]
+    data = res.json()
+    if data.get("requires_mfa"):
+        from backend.app.db.database import get_db
+        from backend.app.models.models import User
+        import pyotp
+        db = next(get_db())
+        user = db.query(User).filter(User.username == "admin").first()
+        code = pyotp.TOTP(user.mfa_secret).now()
+        res_mfa = client.post("/api/auth/mfa/verify", json={"temp_token": data["temp_token"], "code": code})
+        return res_mfa.json()["access_token"]
+    return data["access_token"]
 
 @pytest.fixture(scope="module")
 def analyst_token():

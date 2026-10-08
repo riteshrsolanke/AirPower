@@ -13,25 +13,16 @@ from backend.app.core.security import decode_token
 from backend.app.db.database import get_db
 from backend.app.models.models import User, UserRole, AuditLog
 
+from backend.app.services.audit import log_audit
+
 security = HTTPBearer(auto_error=False)
 
 
 def _log_audit(db: Session, user: Optional[User], action: str, resource: str,
                result: str, ip: str, details: dict = None):
-    """Write an audit log entry."""
+    """Write an audit log entry using cryptographic chain."""
     try:
-        log = AuditLog(
-            user_id=user.id if user else None,
-            username=user.username if user else "anonymous",
-            role=user.role.value if user else None,
-            action=action,
-            resource=resource,
-            result=result,
-            ip_address=ip,
-            details=details,
-        )
-        db.add(log)
-        db.commit()
+        log_audit(db, user, action, resource, result, ip, details)
     except Exception:
         pass  # Audit log failure should not block the request
 
@@ -52,7 +43,7 @@ def get_current_user(
         raise credentials_exception
 
     payload = decode_token(credentials.credentials)
-    if not payload or payload.get("type") != "access":
+    if not payload or payload.get("type") != "access" or payload.get("type_override") == "mfa_pending":
         raise credentials_exception
 
     user_id = payload.get("sub")

@@ -408,3 +408,152 @@ async def plan_diff(
             for c in changes
         ],
     }
+
+
+# ── Operational What-If Planning Sandbox (PS 26250) ─────────────────────────
+
+from backend.app.services.whatif import (
+    get_whatif_options,
+    run_operational_whatif,
+    promote_simulation_to_plan,
+)
+
+
+class WhatIfPlanningRequest(BaseModel):
+    scenario_type: str
+    entity_id: Optional[str] = None
+    parameters: Optional[dict] = None
+    base_plan_id: Optional[str] = None
+    objective: Optional[str] = "MAX_COVERAGE"
+
+
+class PromoteWhatIfRequest(BaseModel):
+    simulation_result: dict
+    note: Optional[str] = "Promoted from What-If Planning Sandbox"
+
+
+@router.get("/whatif/options")
+async def get_whatif_planning_options(
+    current_user: User = Depends(require_any_authenticated),
+    db: Session = Depends(get_db),
+):
+    """Return selectable entities and scenario types for the What-If Sandbox."""
+    return get_whatif_options(db)
+
+
+@router.post("/whatif")
+async def run_whatif_planning_scenario(
+    req: WhatIfPlanningRequest,
+    request: Request,
+    current_user: User = Depends(require_analyst_or_above),
+    db: Session = Depends(get_db),
+):
+    """
+    Run an in-memory Operational What-If simulation.
+    Does NOT permanently modify the operational database.
+    Requires ANALYST role or above.
+    """
+    ip = _get_ip(request)
+    try:
+        result = run_operational_whatif(
+            db=db,
+            scenario_type=req.scenario_type,
+            entity_id=req.entity_id,
+            parameters=req.parameters,
+            base_plan_id=req.base_plan_id,
+            objective=req.objective or "MAX_COVERAGE",
+            current_user=current_user,
+            ip_address=ip,
+        )
+        return result
+    except Exception as exc:
+        log.exception("What-If simulation failed: %s", exc)
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/whatif/promote")
+async def promote_whatif_simulation(
+    req: PromoteWhatIfRequest,
+    request: Request,
+    current_user: User = Depends(require_analyst_or_above),
+    db: Session = Depends(get_db),
+):
+    """
+    Promote an approved simulation result into a formal PROPOSED plan.
+    Requires subsequent approval by a second authorized user (four-eyes rule).
+    """
+    ip = _get_ip(request)
+    try:
+        return promote_simulation_to_plan(
+            db=db,
+            simulation_result=req.simulation_result,
+            note=req.note or "Promoted from What-If simulation",
+            current_user=current_user,
+            ip_address=ip,
+        )
+    except Exception as exc:
+        log.exception("What-If promotion failed: %s", exc)
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+# ── Scenario Switching Endpoints (PS 26250 Phase 2) ─────────────────────────
+
+from backend.app.services.seed_constrained import (
+    seed_constrained_scenario,
+    reset_baseline_scenario,
+)
+
+
+@router.get("/scenario/status")
+async def get_scenario_status(
+    current_user: User = Depends(require_any_authenticated),
+    db: Session = Depends(get_db),
+):
+    """Return status of active scenario (CONSTRAINED vs BASELINE)."""
+    m_count = db.query(Mission).count()
+    a_count = db.query(Aircraft).count()
+    c_count = db.query(Crew).count()
+    scenario_type = "CONSTRAINED" if m_count == 10 else "BASELINE"
+    return {
+        "scenario": scenario_type,
+        "name": "SIH Constrained Demonstration Scenario" if scenario_type == "CONSTRAINED" else "Baseline Operations Scenario",
+        "description": "Scarce multirole fighters (4), high competition, risk vs coverage trade-offs" if scenario_type == "CONSTRAINED" else "Surplus fleet (30 aircraft, 8 missions, 100% coverage)",
+        "mission_count": m_count,
+        "aircraft_count": a_count,
+        "crew_count": c_count,
+    }
+
+
+@router.post("/scenario/load-constrained")
+async def load_constrained_demo_scenario(
+    request: Request,
+    current_user: User = Depends(require_analyst_or_above),
+    db: Session = Depends(get_db),
+):
+    """Seed the constrained demonstration scenario for SIH 2026."""
+    ip = _get_ip(request)
+    result = seed_constrained_scenario(db)
+    _audit(db, current_user, "LOAD_SCENARIO", "CONSTRAINED_DEMO", "SUCCESS", ip, result)
+    return {
+        "status": "success",
+        "message": "Loaded SIH Constrained Demonstration Scenario.",
+        "summary": result,
+    }
+
+
+@router.post("/scenario/reset-baseline")
+async def reset_baseline_demo_scenario(
+    request: Request,
+    current_user: User = Depends(require_analyst_or_above),
+    db: Session = Depends(get_db),
+):
+    """Reset to the baseline standard scenario (8 missions, 30 aircraft)."""
+    ip = _get_ip(request)
+    result = reset_baseline_scenario(db)
+    _audit(db, current_user, "RESET_SCENARIO", "BASELINE_DEMO", "SUCCESS", ip, result)
+    return {
+        "status": "success",
+        "message": "Reset to Baseline Operations Scenario.",
+        "summary": result,
+    }
+

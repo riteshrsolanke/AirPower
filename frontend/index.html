@@ -82,7 +82,19 @@
                    onkeyup="if(this.value.length===6) doMFAVerify()" />
           </div>
           <button class="btn-primary btn-full" onclick="doMFAVerify()">Verify Code</button>
-          <button class="btn-ghost btn-full" onclick="showLoginStep()">← Back to Login</button>
+          
+          <div style="margin-top: 10px; display: flex; gap: 8px;">
+            <button type="button" class="btn-ghost btn-full" style="font-size: 11px; padding: 6px;" onclick="showLoginMFAQr()">📱 Show QR / Key</button>
+            <button type="button" class="btn-ghost btn-full" style="font-size: 11px; padding: 6px;" onclick="autoFillDemoTOTP()">⚡ Fill Demo TOTP</button>
+          </div>
+          
+          <div id="login-mfa-qr-box" class="hidden" style="margin-top: 10px; padding: 10px; background: rgba(15,23,42,0.85); border: 1px solid rgba(56,189,248,0.25); border-radius: 6px; text-align: center;">
+            <div id="login-mfa-qr-img"></div>
+            <div id="login-mfa-secret-text" style="font-family: monospace; font-size: 10px; margin-top: 6px; color: #38bdf8; word-break: break-all;"></div>
+            <p style="font-size: 10px; color: #94a3b8; margin-top: 4px;">Scan with Google Authenticator or enter key manually.</p>
+          </div>
+
+          <button class="btn-ghost btn-full" style="margin-top: 8px;" onclick="showLoginStep()">← Back to Login</button>
         </div>
 
         <div class="auth-footer">
@@ -891,16 +903,34 @@
           <!-- PHASE 4: PLAN VIEW (MISSION/GANTT) -->
           <div id="page-plan" class="page">
             <div class="page-header">
-              <h1>Mission Planning (PLAN)</h1>
-              <p class="page-subtitle">Dynamic retasking, optimization, and plan comparison.</p>
+              <h1>Air Operations Planning & Decision Support (PLAN)</h1>
+              <p class="page-subtitle">Multi-objective MILP optimization, operational What-If sandbox, and dynamic retasking.</p>
               <div class="header-actions">
                 <button class="btn-primary" onclick="generatePlans()">⟳ Run Optimizer</button>
               </div>
             </div>
+
+            <!-- SCENARIO SWITCHER BANNER (Phase 2) -->
+            <div class="scenario-banner" id="scenario-banner">
+              <div>
+                <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.25rem;">
+                  <span class="scenario-badge constrained" id="scenario-status-badge">⚡ SIH Constrained Demo Scenario</span>
+                  <span class="simulation-disclaimer">Synthetic Demonstration Prototype</span>
+                </div>
+                <div style="font-size:0.85rem; color:#94a3b8;" id="scenario-status-desc">
+                  Scarce multirole fighters (4), 10 competing missions, risk vs coverage trade-offs active.
+                </div>
+              </div>
+              <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                <button class="btn-sm btn-secondary" onclick="loadConstrainedScenario()">⚡ Load Constrained SIH Demo</button>
+                <button class="btn-sm btn-ghost" onclick="resetBaselineScenario()">↺ Reset Baseline (Surplus Fleet)</button>
+              </div>
+            </div>
+
             <div class="dashboard-grid">
               <div class="card" style="grid-column: span 3;">
                 <div class="card-header">
-                  <h3>Generated Plans</h3>
+                  <h3>Generated Mission Plans (PuLP / CBC MILP)</h3>
                   <button class="btn-sm" onclick="fetchPlans()">Refresh</button>
                 </div>
                 <div class="table-responsive">
@@ -908,36 +938,157 @@
                     <thead>
                       <tr>
                         <th>Version</th>
+                        <th>Objective</th>
                         <th>Status</th>
                         <th>Coverage</th>
                         <th>Risk Score</th>
+                        <th>Sorties</th>
                         <th>Summary</th>
                         <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr><td colspan="6" class="text-center">Loading plans...</td></tr>
+                      <tr><td colspan="8" class="text-center">Loading plans...</td></tr>
                     </tbody>
                   </table>
                 </div>
               </div>
             </div>
-            
-            <div class="dashboard-grid">
+
+            <!-- OPERATIONAL WHAT-IF PLANNING SANDBOX (Phase 1) -->
+            <div class="dashboard-grid" style="margin-top: 1.5rem;">
+              <div class="card" style="grid-column: span 3; border: 1px solid rgba(99, 102, 241, 0.35);">
+                <div class="card-header" style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.75rem;">
+                  <div style="display:flex; align-items:center; gap:0.75rem;">
+                    <h3>Operational What-If Planning Sandbox</h3>
+                    <span class="simulation-disclaimer">SIMULATED DECISION SUPPORT — SYNTHETIC DATA</span>
+                  </div>
+                  <span style="font-size:0.8rem; color:#94a3b8;">Isolated in-memory simulation — does not mutate persistent database</span>
+                </div>
+
+                <div style="padding: 1.25rem;">
+                  <div class="whatif-grid">
+                    <div class="form-group">
+                      <label for="whatif-scenario-select">Scenario Type</label>
+                      <select id="whatif-scenario-select" class="form-select" onchange="onWhatIfScenarioChange()">
+                        <option value="AIRCRAFT_UNAVAILABLE">Aircraft Unavailable / Grounded</option>
+                        <option value="CREW_UNAVAILABLE">Crew Unavailable / Mandatory Rest</option>
+                        <option value="BASE_UNAVAILABLE">Air Base Unavailable / Runway Closure</option>
+                        <option value="WEATHER_RESTRICTION">Adverse Weather / Below Minimums</option>
+                        <option value="RESOURCE_SHORTAGE">Resource Shortage (Fuel/Munitions)</option>
+                        <option value="NEW_PRIORITY_MISSION">New Urgent Priority 1 Mission</option>
+                      </select>
+                    </div>
+
+                    <div class="form-group">
+                      <label for="whatif-entity-select">Affected Entity</label>
+                      <select id="whatif-entity-select" class="form-select">
+                        <option value="">Loading options...</option>
+                      </select>
+                    </div>
+
+                    <div class="form-group">
+                      <label for="whatif-objective-select">Optimizer Objective</label>
+                      <select id="whatif-objective-select" class="form-select">
+                        <option value="MAX_COVERAGE">MAX_COVERAGE (Max Combat Sorties)</option>
+                        <option value="MIN_RISK">MIN_RISK (Min Hostile Threat Exposure)</option>
+                        <option value="RESOURCE_LEAN">RESOURCE_LEAN (Min Platform / Fuel Burn)</option>
+                      </select>
+                    </div>
+
+                    <div class="form-group">
+                      <label for="whatif-param-input">Scenario Parameter / Reason</label>
+                      <input type="text" id="whatif-param-input" placeholder="e.g. Unscheduled engine inspection" />
+                    </div>
+                  </div>
+
+                  <div style="margin-top: 1rem; display: flex; gap: 1rem; align-items: center;">
+                    <button class="btn-primary" id="run-whatif-btn" onclick="runWhatIfSimulation()">
+                      🚀 Run What-If Simulation
+                    </button>
+                    <span style="font-size:0.8rem; color:#94a3b8;">Compares baseline active plan against temporary hypothetical constraints</span>
+                  </div>
+
+                  <!-- Simulation Results Container -->
+                  <div id="whatif-results-container" class="hidden" style="margin-top: 1.5rem; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 1.25rem;">
+                    <!-- Injected dynamically via app.js -->
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- DYNAMIC RETASK EVENT INJECTION (Phase 7) -->
+            <div class="dashboard-grid" style="margin-top: 1.5rem;">
               <div class="card" style="grid-column: span 3;">
                 <div class="card-header">
-                  <h3>Inject Event (Trigger Retask)</h3>
+                  <div style="display:flex; align-items:center; gap:0.75rem;">
+                    <h3>Dynamic Event Injection (Operational Retasking)</h3>
+                    <span class="card-badge">Live System Retask</span>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:0.5rem; font-size:0.8rem; color:#94a3b8;">
+                    <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer;">
+                      <input type="checkbox" id="event-dev-toggle" onchange="toggleEventDevMode()" /> Developer / Raw JSON Mode
+                    </label>
+                  </div>
                 </div>
-                <div style="padding: 1rem; display: flex; gap: 1rem; align-items: center;">
-                  <select id="event-type-select" class="form-select" style="max-width: 250px;">
-                    <option value="AIRCRAFT_UNSERVICEABLE">Aircraft Unserviceable</option>
-                    <option value="NEW_THREAT">New Threat</option>
-                    <option value="WEATHER_CLOSURE">Weather Closure</option>
-                    <option value="NEW_PRIORITY_MISSION">New Priority Mission</option>
-                  </select>
-                  <button class="btn-primary" onclick="injectEvent()">Inject Selected Event</button>
+
+                <div style="padding: 1.25rem;">
+                  <!-- User-Friendly Entity Selector UI -->
+                  <div id="event-friendly-ui" class="whatif-grid">
+                    <div class="form-group">
+                      <label for="event-type-select">Operational Event Type</label>
+                      <select id="event-type-select" class="form-select" onchange="onEventTypeChange()">
+                        <option value="AIRCRAFT_UNSERVICEABLE">Aircraft Unserviceable (Technical Fault)</option>
+                        <option value="CREW_UNAVAILABLE">Crew Medical / Fatigue Grounding</option>
+                        <option value="WEATHER_CLOSURE">Adverse Weather / Runway Below Minimums</option>
+                        <option value="NEW_THREAT">New Threat Zone Detected (SAM / Radar)</option>
+                        <option value="NEW_PRIORITY_MISSION">Pop-Up Priority Mission (Urgent Strike/CAS)</option>
+                      </select>
+                    </div>
+
+                    <div class="form-group">
+                      <label for="event-entity-select">Affected Asset / Location</label>
+                      <select id="event-entity-select" class="form-select">
+                        <option value="">Loading assets...</option>
+                      </select>
+                    </div>
+
+                    <div class="form-group">
+                      <label for="event-detail-input">Operational Notes / Reason</label>
+                      <input type="text" id="event-detail-input" placeholder="e.g. Injected hydraulic actuator seal leak" />
+                    </div>
+                  </div>
+
+                  <!-- Developer / Raw JSON Mode (Hidden by default) -->
+                  <div id="event-raw-ui" class="hidden" style="margin-bottom: 1rem;">
+                    <label style="font-size: 0.85rem; color:#94a3b8; display:block; margin-bottom:0.35rem;">Raw Event Payload (JSON)</label>
+                    <textarea id="event-json-editor" rows="5" class="form-control" style="font-family: monospace; font-size: 0.85rem; width: 100%; background: #020617; color: #38bdf8; border: 1px solid var(--border); border-radius: 4px; padding: 0.5rem;"></textarea>
+                  </div>
+
+                  <div style="display:flex; gap: 1rem; align-items: center; margin-top: 0.75rem;">
+                    <button class="btn-primary" id="inject-event-btn" onclick="injectEvent()">⚡ Inject Event & Trigger Retask</button>
+                    <span style="font-size:0.8rem; color:#94a3b8;">Evaluates mission impact, recomputes MILP assignments, and generates SHA-256 audited plan diff</span>
+                  </div>
+
+                  <div id="event-result-diff" style="padding-top: 1rem;"></div>
                 </div>
-                <div id="event-result-diff" style="padding: 1rem;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- PLAN ASSIGNMENTS & FEASIBILITY DETAIL MODAL -->
+          <div id="plan-details-modal" class="modal hidden">
+            <div class="modal-backdrop" onclick="closePlanDetailsModal()"></div>
+            <div class="modal-content" style="max-width: 900px; width: 90%;">
+              <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                  <h2 id="plan-details-title">Plan Assignments & Feasibility Evaluation</h2>
+                  <span class="simulation-disclaimer">PS 26250 XAI Engine</span>
+                </div>
+                <button onclick="closePlanDetailsModal()">✕</button>
+              </div>
+              <div class="modal-body" id="plan-details-body">
+                <div class="loading">Loading assignments...</div>
               </div>
             </div>
           </div>
@@ -969,9 +1120,10 @@
               <div class="card" style="grid-column: span 3;">
                  <div class="card-header">
                    <h3>Operational Readiness Dashboard</h3>
+                   <button class="btn-sm" onclick="fetchReadiness()">Refresh</button>
                  </div>
-                 <div style="padding: 1rem; text-align: center; color: #94a3b8;">
-                   Integrated readiness metrics will be populated here.
+                 <div id="operational-readiness-breakdown" style="padding: 1rem;">
+                   <div class="loading">Loading operational readiness metrics...</div>
                  </div>
               </div>
               

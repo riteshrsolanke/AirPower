@@ -34,9 +34,16 @@ class LoginRequest(BaseModel):
     password: str
 
 
+import pyotp
+
+
 class MFAVerifyRequest(BaseModel):
     temp_token: str
     code: str
+
+
+class MFASetupInfoRequest(BaseModel):
+    temp_token: str
 
 
 class TokenResponse(BaseModel):
@@ -320,6 +327,34 @@ async def mfa_disable(
     db.commit()
     _audit(db, current_user, "MFA_DISABLED", current_user.username, "SUCCESS", ip)
     return {"message": "MFA disabled"}
+
+
+@router.post("/mfa/setup-info")
+async def mfa_setup_info(req: MFASetupInfoRequest, db: Session = Depends(get_db)):
+    """Return QR code and TOTP setup parameters for a pending MFA login session."""
+    payload = decode_token(req.temp_token)
+    if not payload or payload.get("type_override") != "mfa_pending":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired MFA session")
+
+    user = db.query(User).filter(User.id == payload.get("sub")).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+
+    if not user.mfa_secret:
+        user.mfa_secret = generate_totp_secret()
+        user.mfa_enabled = True
+        db.commit()
+
+    uri = get_totp_uri(user.mfa_secret, user.username)
+    qr_code = generate_qr_code_base64(uri)
+    totp = pyotp.TOTP(user.mfa_secret)
+    return {
+        "username": user.username,
+        "qr_code": f"data:image/png;base64,{qr_code}",
+        "uri": uri,
+        "secret": user.mfa_secret,
+        "demo_current_code": totp.now(),
+    }
 
 
 # ── Internal Helper ───────────────────────────────────────────────────────────

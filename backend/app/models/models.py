@@ -222,6 +222,11 @@ class Aircraft(Base):
     # Phase 1: FK to operational base (nullable — keeps old rows valid)
     base_id = Column(String, ForeignKey("air_bases.id", ondelete="SET NULL"), nullable=True)
 
+    # Phase 4: Synthetic range, fuel, and payload capabilities
+    range_km = Column(Float, default=2000.0)
+    fuel_capacity = Column(Float, default=5000.0)
+    payload_capacity = Column(Float, default=4000.0)
+
     components = relationship("AircraftComponent", back_populates="aircraft", cascade="all, delete-orphan")
     sensor_readings = relationship("SensorReading", back_populates="aircraft", cascade="all, delete-orphan")
     maintenance_records = relationship("MaintenanceRecord", back_populates="aircraft", cascade="all, delete-orphan")
@@ -581,6 +586,9 @@ class Mission(Base):
     required_aircraft_type = Column(String, nullable=True)       # must match Aircraft.model
     required_weapon_code   = Column(String, nullable=True)       # must match WeaponType.code
     min_aircraft_count = Column(Integer, default=1)
+    # Phase 4: Synthetic mission distance and payload requirements
+    distance_km = Column(Float, default=500.0)
+    required_payload = Column(Float, default=1500.0)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

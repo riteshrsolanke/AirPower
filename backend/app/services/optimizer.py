@@ -164,13 +164,13 @@ def _check_aircraft_mission_feasibility(
         )
 
     # 2. Remaining useful life (Use conservative rul_low if available)
-    effective_rul = aircraft.rul_hours
+    effective_rul = aircraft.rul_hours if aircraft.rul_hours is not None else 500.0
     if getattr(aircraft, 'predictions', None):
         latest_pred = sorted(aircraft.predictions, key=lambda x: x.generated_at, reverse=True)[0]
-        if latest_pred.rul_low:
+        if latest_pred.rul_low is not None:
             effective_rul = latest_pred.rul_low
         
-    required_rul = mission.estimated_duration_hours + RUL_SAFETY_MARGIN_HOURS
+    required_rul = (mission.estimated_duration_hours or 2.0) + RUL_SAFETY_MARGIN_HOURS
     if effective_rul < required_rul:
         reasons.append(
             f"{aircraft.id} RUL(low)={effective_rul:.0f} h < required "
@@ -209,6 +209,42 @@ def _check_aircraft_mission_feasibility(
                 f"{wx.go_no_go_reason or 'below minimums'}"
             )
 
+    # 6. Phase 4: Synthetic range feasibility
+    mission_dist = getattr(mission, "distance_km", 500.0) or 500.0
+    ac_range = getattr(aircraft, "range_km", 2000.0) or 2000.0
+    if ac_range < mission_dist:
+        reasons.append(
+            f"Rejected: synthetic range constraint ({aircraft.id} range {ac_range:.0f} km < required {mission_dist:.0f} km)"
+        )
+
+    # 7. Phase 4: Synthetic fuel capacity feasibility
+    ac_fuel = getattr(aircraft, "fuel_capacity", 5000.0) or 5000.0
+    # Conservative estimate: 2.2 kg of synthetic fuel per mission km
+    required_fuel = mission_dist * 2.2
+    if ac_fuel < required_fuel:
+        reasons.append(
+            f"Rejected: synthetic fuel constraint ({aircraft.id} fuel capacity {ac_fuel:.0f} kg < estimated requirement {required_fuel:.0f} kg)"
+        )
+
+    # 8. Phase 4: Synthetic payload capacity feasibility
+    req_payload = getattr(mission, "required_payload", 1500.0) or 1500.0
+    ac_payload = getattr(aircraft, "payload_capacity", 4000.0) or 4000.0
+    if ac_payload < req_payload:
+        reasons.append(
+            f"Rejected: synthetic payload constraint ({aircraft.id} payload capacity {ac_payload:.0f} kg < required {req_payload:.0f} kg)"
+        )
+
+    # 9. Phase 5: Mission time-window feasibility
+    if mission.time_window_start and mission.time_window_end:
+        try:
+            window_dur = (mission.time_window_end - mission.time_window_start).total_seconds() / 3600.0
+            if window_dur > 0 and mission.estimated_duration_hours > window_dur:
+                reasons.append(
+                    f"Rejected: synthetic mission time window conflict (duration {mission.estimated_duration_hours:.1f} h > window {window_dur:.1f} h)"
+                )
+        except Exception:
+            pass
+
     return (len(reasons) == 0), reasons
 
 
@@ -235,9 +271,10 @@ def _collect_drop_reason(
     unique = list(dict.fromkeys(all_reasons))
     if not unique:
         return "No eligible aircraft: unknown constraint."
-    # Prefer type-mismatch and RUL over weather (more actionable)
+    # Prefer most actionable constraints (time window, range, payload, type-mismatch, RUL)
     for r in unique:
-        if "requires" in r or "RUL" in r or "GROUNDED" in r:
+        r_low = r.lower()
+        if "time window" in r_low or "range" in r_low or "payload" in r_low or "base capacity" in r_low or "requires" in r_low or "rul" in r_low or "grounded" in r_low:
             return r
     return unique[0]
 
@@ -297,50 +334,59 @@ def _explain_assignment(
     weapon_name: Optional[str],
     t_score: float,
     plan_type: str,
+    base_name: Optional[str] = None,
 ) -> str:
-    parts: List[str] = []
+    lines: List[str] = ["Assignment selected because:"]
 
-    # Aircraft rationale
-    parts.append(
-        f"{ac.id} ({ac.model}) selected: health {ac.health_score:.0f}%, "
-        f"RUL {ac.rul_hours:.0f} h "
-        f"(≥ {mission.estimated_duration_hours + RUL_SAFETY_MARGIN_HOURS:.0f} h required), "
-        f"status {ac.mission_capable_status.value if ac.mission_capable_status else 'CAPABLE'}."
+    # 1. Aircraft availability & health
+    status_str = ac.mission_capable_status.value if hasattr(ac.mission_capable_status, "value") else str(ac.mission_capable_status or "CAPABLE")
+    lines.append(
+        f"  ✓ aircraft available ({ac.id}, {ac.model}, status {status_str}, health {getattr(ac, 'health_score', 100.0) or 100.0:.0f}%, RUL {getattr(ac, 'rul_hours', 500.0) or 500.0:.0f} h ≥ {(mission.estimated_duration_hours or 2.0) + RUL_SAFETY_MARGIN_HOURS:.0f} h safety threshold)"
     )
 
-    # Crew rationale
+    # 2. Synthetic range feasibility
+    mission_dist = getattr(mission, "distance_km", 500.0) or 500.0
+    ac_range = getattr(ac, "range_km", 2000.0) or 2000.0
+    lines.append(f"  ✓ synthetic range feasible ({ac_range:.0f} km ≥ {mission_dist:.0f} km mission distance)")
+
+    # 3. Synthetic payload feasibility
+    req_payload = getattr(mission, "required_payload", 1500.0) or 1500.0
+    ac_payload = getattr(ac, "payload_capacity", 4000.0) or 4000.0
+    lines.append(f"  ✓ synthetic payload feasible ({ac_payload:.0f} kg ≥ {req_payload:.0f} kg required payload)")
+
+    # 4. Weather and base capacity
+    if base_name:
+        lines.append(f"  ✓ weather status GO at {base_name} & synthetic base capacity satisfied")
+    else:
+        lines.append("  ✓ weather status GO at operating airfield")
+
+    # 5. Crew qualification and fatigue
     if crew:
         hrs_left = crew.max_duty_hours - crew.duty_hours_used
-        parts.append(
-            f"Crew: {crew.name} ({crew.rank}, {crew.role}), "
-            f"{hrs_left:.0f} h duty remaining, {crew.rest_status}."
+        lines.append(
+            f"  ✓ crew qualified & {crew.rest_status} ({crew.name}, {crew.rank}, {crew.role}, {hrs_left:.0f} h duty budget remaining)"
         )
     else:
-        parts.append("⚠ No qualified crew found at this base — crew TBA.")
+        lines.append("  ⚠ crew assignment pending qualification review")
 
-    # Weapon
+    # 6. Weapon compatibility
     if weapon_name:
-        parts.append(f"Loaded with {weapon_name} (× 2).")
+        lines.append(f"  ✓ resource & weapon compatibility satisfied ({weapon_name} × 2)")
 
-    # Threat
-    if t_score > 0.6:
-        label = "HIGH"
-    elif t_score > 0.25:
-        label = "MODERATE"
-    else:
-        label = "LOW"
-    parts.append(f"Threat exposure: {label} ({t_score:.2f}).")
+    # 7. Threat exposure
+    t_label = "HIGH" if t_score > 0.6 else ("MODERATE" if t_score > 0.25 else "LOW")
+    lines.append(f"  ✓ route threat exposure evaluated: {t_label} (index {t_score:.2f})")
 
-    # Plan-specific note
+    # 8. Plan objective
     note = {
-        "MAX_COVERAGE":   "Chosen to maximise priority-weighted mission coverage.",
-        "MIN_RISK":       "Chosen to minimise route exposure to active threat zones.",
-        "RESOURCE_LEAN":  "Chosen to deliver coverage with fewest platform sorties.",
+        "MAX_COVERAGE":   "Optimized to maximize priority-weighted mission coverage.",
+        "MIN_RISK":       "Optimized to minimize route exposure to active threat zones.",
+        "RESOURCE_LEAN":  "Optimized to deliver coverage with fewest platform sorties.",
     }.get(plan_type, "")
     if note:
-        parts.append(note)
+        lines.append(f"  [{note}]")
 
-    return " ".join(parts)
+    return "\n".join(lines)
 
 
 def _plan_summary(
@@ -379,6 +425,7 @@ def _solve_ilp(
     feasibility: Dict[Tuple[int, int], Tuple[bool, List[str]]],
     threat_scores: Dict[str, float],
     forbidden_pairs: List[Set[Tuple[str, str]]],  # [(mission_id, aircraft_id), …]
+    base_capacities: Optional[Dict[str, int]] = None,
 ) -> Tuple[Dict[int, List[int]], int, str]:
     """
     Solve one MILP instance.
@@ -419,17 +466,17 @@ def _solve_ilp(
         prob += coverage_obj
 
     elif plan_type == "MIN_RISK":
-        # Coverage is primary; threat exposure is a penalty
+        # Threat exposure penalty is prioritized to avoid high-risk SAM envelopes
         risk_penalty = lpSum(
             ts[m] * lpSum(x[m, a] for a in range(nA))
             for m in range(nM)
         )
-        prob += coverage_obj - 2.5 * risk_penalty
+        prob += coverage_obj - 12.0 * risk_penalty
 
     elif plan_type == "RESOURCE_LEAN":
-        # Coverage is primary; penalise total aircraft sorties
+        # Sortie minimization penalty to conserve aircraft assets
         sorties = lpSum(x[m, a] for m in range(nM) for a in range(nA))
-        prob += coverage_obj - 0.15 * sorties
+        prob += coverage_obj - 1.8 * sorties
 
     else:
         prob += coverage_obj   # fallback
@@ -437,7 +484,7 @@ def _solve_ilp(
     # ── Constraints ───────────────────────────────────────────────────────
 
     for m in range(nM):
-        min_k = missions[m].min_aircraft_count
+        min_k = missions[m].min_aircraft_count or 1
 
         # Count feasible aircraft for this mission
         feasible_a = [
@@ -465,6 +512,17 @@ def _solve_ilp(
             lpSum(x[m, a] for m in range(nM)) <= 1,
             f"ac_once_{a}",
         )
+
+    # Phase 6: Base capacity constraints (max aircraft allocated from each base)
+    if base_capacities:
+        for base_id, max_cap in base_capacities.items():
+            if max_cap is not None and max_cap > 0:
+                base_acs = [a for a in range(nA) if getattr(aircraft[a], "base_id", None) == base_id]
+                if base_acs:
+                    prob += (
+                        lpSum(x[m, a] for m in range(nM) for a in base_acs) <= max_cap,
+                        f"base_cap_{str(base_id)[:8]}",
+                    )
 
     # Diversity: plan k+1 must differ from every previous plan by ≥ 1 pair
     m_ids = [missions[m].id for m in range(nM)]
@@ -568,6 +626,11 @@ def _load_context(db: Session) -> Dict:
     # Weapon lookup by code
     wt_by_code: Dict[str, WeaponType] = {w.code: w for w in wt_by_id.values()}
 
+    # Phase 6: Bases lookup and capacity map
+    bases = db.query(AirBase).all()
+    base_capacities: Dict[str, int] = {b.id: b.max_aircraft_capacity for b in bases}
+    base_names: Dict[str, str] = {b.id: b.name for b in bases}
+
     return {
         "aircraft":         aircraft,
         "crews":            crews,
@@ -577,10 +640,155 @@ def _load_context(db: Session) -> Dict:
         "weapon_inventory": weapon_inventory,
         "weapon_compat":    weapon_compat,
         "wt_by_code":       wt_by_code,
+        "base_capacities":  base_capacities,
+        "base_names":       base_names,
     }
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
+
+def solve_operational_scenario(
+    missions: List[Mission],
+    aircraft: List[Aircraft],
+    crews: List[Crew],
+    threats: List[ThreatZone],
+    weather_map: Dict[str, WeatherCondition],
+    weapon_inventory: Dict[Tuple[str, str], int],
+    weapon_compat: Set[Tuple[str, str]],
+    wt_by_code: Dict[str, WeaponType],
+    base_capacities: Optional[Dict[str, int]] = None,
+    base_names: Optional[Dict[str, str]] = None,
+    plan_type: str = "MAX_COVERAGE",
+    forbidden_pairs: Optional[List[Set[Tuple[str, str]]]] = None,
+) -> Tuple[List[AssignmentResult], List[DroppedMission], float, float, Dict, int, str]:
+    """
+    Core operational scenario solver.
+    Solves an in-memory operational scenario without mutating the database.
+    Used by both baseline generate_plans() and What-If planning sandbox.
+    """
+    if forbidden_pairs is None:
+        forbidden_pairs = []
+
+    # 1. Feasibility matrix
+    feasibility: Dict[Tuple[int, int], Tuple[bool, List[str]]] = {}
+    for m_idx, mission in enumerate(missions):
+        for a_idx, ac in enumerate(aircraft):
+            ok, reasons = _check_aircraft_mission_feasibility(
+                ac, mission, weather_map, weapon_inventory, weapon_compat
+            )
+            feasibility[m_idx, a_idx] = (ok, reasons)
+
+    # 2. Threat scores
+    threat_scores: Dict[str, float] = {}
+    for mission in missions:
+        ta = mission.target_area or {}
+        lat, lon = ta.get("lat", 0.0), ta.get("lon", 0.0)
+        threat_scores[mission.id] = _threat_exposure(lat, lon, threats)
+
+    # 3. MILP solve
+    assigned, solve_ms, lp_status = _solve_ilp(
+        plan_type=plan_type,
+        missions=missions,
+        aircraft=aircraft,
+        feasibility=feasibility,
+        threat_scores=threat_scores,
+        forbidden_pairs=forbidden_pairs,
+        base_capacities=base_capacities,
+    )
+
+    # 4. Post-process crew and weapons
+    used_crew_ids: Set[str] = set()
+    used_weapon_counts: Dict[Tuple[str, str], int] = dict(weapon_inventory)
+    assignment_results: List[AssignmentResult] = []
+
+    for m_idx in sorted(assigned, key=lambda i: missions[i].priority):
+        mission = missions[m_idx]
+        for a_idx in assigned[m_idx]:
+            ac = aircraft[a_idx]
+
+            # Crew
+            crew = _pick_crew(ac, mission, crews, used_crew_ids)
+            if crew:
+                used_crew_ids.add(crew.id)
+
+            # Weapon
+            wt_obj: Optional[WeaponType] = None
+            wt_qty = 0
+            if mission.required_weapon_code:
+                wt_obj = wt_by_code.get(mission.required_weapon_code)
+                if wt_obj:
+                    inv_key = (ac.base_id, mission.required_weapon_code)
+                    available = used_weapon_counts.get(inv_key, 0)
+                    if available >= 2:
+                        wt_qty = 2
+                        used_weapon_counts[inv_key] = available - wt_qty
+
+            t_score = threat_scores.get(mission.id, 0.0)
+            b_name = base_names.get(ac.base_id) if base_names and ac.base_id else None
+
+            assignment_results.append(AssignmentResult(
+                mission_id=mission.id,
+                mission_name=mission.name,
+                mission_type=mission.mission_type,
+                priority=mission.priority,
+                aircraft_id=ac.id,
+                aircraft_model=ac.model,
+                crew_id=crew.id if crew else None,
+                crew_name=crew.name if crew else None,
+                weapon_type_id=wt_obj.id if wt_obj else None,
+                weapon_code=wt_obj.code if wt_obj else None,
+                weapon_quantity=wt_qty,
+                threat_exposure_score=round(t_score, 4),
+                explanation=_explain_assignment(
+                    mission, ac, crew,
+                    wt_obj.name if wt_obj else None,
+                    t_score, plan_type,
+                    base_name=b_name,
+                ),
+            ))
+
+    # 5. Dropped missions
+    dropped: List[DroppedMission] = []
+    for m_idx, mission in enumerate(missions):
+        if m_idx not in assigned:
+            any_feasible = any(
+                feasibility.get((m_idx, a_idx), (False, []))[0]
+                for a_idx in range(len(aircraft))
+            )
+            dropped.append(DroppedMission(
+                mission_id=mission.id,
+                mission_name=mission.name,
+                priority=mission.priority,
+                reason=_collect_drop_reason(
+                    m_idx, missions, aircraft, feasibility,
+                    was_competed_away=any_feasible,
+                ),
+            ))
+
+    # 6. Metrics & Summary
+    n_covered = len(assigned)
+    coverage_pct = round((n_covered / len(missions)) * 100, 1) if missions else 0.0
+    risk_score = (
+        round(
+            sum(a.threat_exposure_score for a in assignment_results)
+            / len(assignment_results),
+            4,
+        )
+        if assignment_results else 0.0
+    )
+    resource_use = {
+        "aircraft_assigned": len({a.aircraft_id for a in assignment_results}),
+        "crews_assigned":    len({a.crew_id for a in assignment_results if a.crew_id}),
+        "missions_covered":  n_covered,
+        "missions_total":    len(missions),
+        "missions_dropped":  len(dropped),
+        "lp_status":         lp_status,
+        "solve_time_ms":     solve_ms,
+    }
+    summary = _plan_summary(plan_type, coverage_pct, risk_score, resource_use, dropped)
+
+    return assignment_results, dropped, coverage_pct, risk_score, resource_use, solve_ms, summary
+
 
 def generate_plans(db: Session, created_by_user_id: str) -> List[PlanResult]:
     """
@@ -601,29 +809,11 @@ def generate_plans(db: Session, created_by_user_id: str) -> List[PlanResult]:
     weapon_inventory = ctx["weapon_inventory"]
     weapon_compat    = ctx["weapon_compat"]
     wt_by_code       = ctx["wt_by_code"]
+    base_capacities  = ctx.get("base_capacities", {})
+    base_names       = ctx.get("base_names", {})
 
     if not missions:
         raise RuntimeError("No PENDING missions found. Seed missions before planning.")
-
-    # ── Pre-compute feasibility matrix ────────────────────────────────────
-
-    feasibility: Dict[Tuple[int, int], Tuple[bool, List[str]]] = {}
-    for m_idx, mission in enumerate(missions):
-        for a_idx, ac in enumerate(aircraft):
-            ok, reasons = _check_aircraft_mission_feasibility(
-                ac, mission, weather_map, weapon_inventory, weapon_compat
-            )
-            feasibility[m_idx, a_idx] = (ok, reasons)
-
-    # ── Pre-compute threat scores ─────────────────────────────────────────
-
-    threat_scores: Dict[str, float] = {}
-    for mission in missions:
-        ta = mission.target_area or {}
-        lat, lon = ta.get("lat", 0.0), ta.get("lon", 0.0)
-        threat_scores[mission.id] = _threat_exposure(lat, lon, threats)
-
-    # ── Solve three plans ─────────────────────────────────────────────────
 
     plan_types = ["MAX_COVERAGE", "MIN_RISK", "RESOURCE_LEAN"]
     plan_results: List[PlanResult] = []
@@ -632,120 +822,33 @@ def generate_plans(db: Session, created_by_user_id: str) -> List[PlanResult]:
     for version, plan_type in enumerate(plan_types, start=1):
         log.info("Solving plan %d/%d: %s", version, len(plan_types), plan_type)
 
-        assigned, solve_ms, lp_status = _solve_ilp(
-            plan_type=plan_type,
+        (
+            assignment_results,
+            dropped,
+            coverage_pct,
+            risk_score,
+            resource_use,
+            solve_ms,
+            summary,
+        ) = solve_operational_scenario(
             missions=missions,
             aircraft=aircraft,
-            feasibility=feasibility,
-            threat_scores=threat_scores,
+            crews=crews,
+            threats=threats,
+            weather_map=weather_map,
+            weapon_inventory=weapon_inventory,
+            weapon_compat=weapon_compat,
+            wt_by_code=wt_by_code,
+            base_capacities=base_capacities,
+            base_names=base_names,
+            plan_type=plan_type,
             forbidden_pairs=forbidden_pairs,
         )
 
-        # ── Post-process: crew + weapon selection ─────────────────────────
-
-        used_crew_ids: Set[str]                         = set()
-        used_weapon_counts: Dict[Tuple[str, str], int]  = dict(weapon_inventory)
-        current_forbidden: Set[Tuple[str, str]]         = set()
-
-        assignment_results: List[AssignmentResult] = []
-
-        for m_idx in sorted(assigned, key=lambda i: missions[i].priority):
-            mission = missions[m_idx]
-            for a_idx in assigned[m_idx]:
-                ac = aircraft[a_idx]
-                current_forbidden.add((mission.id, ac.id))
-
-                # Crew
-                crew = _pick_crew(ac, mission, crews, used_crew_ids)
-                if crew:
-                    used_crew_ids.add(crew.id)
-
-                # Weapon
-                wt_obj: Optional[WeaponType] = None
-                wt_qty = 0
-                if mission.required_weapon_code:
-                    wt_obj = wt_by_code.get(mission.required_weapon_code)
-                    if wt_obj:
-                        inv_key = (ac.base_id, mission.required_weapon_code)
-                        available = used_weapon_counts.get(inv_key, 0)
-                        if available >= 2:
-                            wt_qty = 2
-                            used_weapon_counts[inv_key] = available - wt_qty
-
-                t_score = threat_scores.get(mission.id, 0.0)
-
-                assignment_results.append(AssignmentResult(
-                    mission_id=mission.id,
-                    mission_name=mission.name,
-                    mission_type=mission.mission_type,
-                    priority=mission.priority,
-                    aircraft_id=ac.id,
-                    aircraft_model=ac.model,
-                    crew_id=crew.id if crew else None,
-                    crew_name=crew.name if crew else None,
-                    weapon_type_id=wt_obj.id if wt_obj else None,
-                    weapon_code=wt_obj.code if wt_obj else None,
-                    weapon_quantity=wt_qty,
-                    threat_exposure_score=round(t_score, 4),
-                    explanation=_explain_assignment(
-                        mission, ac, crew,
-                        wt_obj.name if wt_obj else None,
-                        t_score, plan_type,
-                    ),
-                ))
-
-        # ── Dropped missions ──────────────────────────────────────────────
-
-        dropped: List[DroppedMission] = []
-        for m_idx, mission in enumerate(missions):
-            if m_idx not in assigned:
-                competed_away = all(
-                    feasibility.get((m_idx, a_idx), (False, []))[0]
-                    for a_idx in range(len(aircraft))
-                ) if aircraft else False
-                # Was it structurally infeasible or just outcompeted?
-                any_feasible = any(
-                    feasibility.get((m_idx, a_idx), (False, []))[0]
-                    for a_idx in range(len(aircraft))
-                )
-                dropped.append(DroppedMission(
-                    mission_id=mission.id,
-                    mission_name=mission.name,
-                    priority=mission.priority,
-                    reason=_collect_drop_reason(
-                        m_idx, missions, aircraft, feasibility,
-                        was_competed_away=any_feasible,
-                    ),
-                ))
-
-        # ── Metrics ───────────────────────────────────────────────────────
-
-        n_covered = len(assigned)
-        coverage_pct = round((n_covered / len(missions)) * 100, 1) if missions else 0.0
-
-        risk_score = (
-            round(
-                sum(a.threat_exposure_score for a in assignment_results)
-                / len(assignment_results),
-                4,
-            )
-            if assignment_results else 0.0
-        )
-
-        resource_use = {
-            "aircraft_assigned": len({a.aircraft_id for a in assignment_results}),
-            "crews_assigned":    len({a.crew_id for a in assignment_results if a.crew_id}),
-            "missions_covered":  n_covered,
-            "missions_total":    len(missions),
-            "missions_dropped":  len(dropped),
-            "lp_status":         lp_status,
-            "solve_time_ms":     solve_ms,
-        }
-
-        summary = _plan_summary(plan_type, coverage_pct, risk_score, resource_use, dropped)
+        current_forbidden = {(a.mission_id, a.aircraft_id) for a in assignment_results}
+        forbidden_pairs.append(current_forbidden)
 
         # ── Persist to database ───────────────────────────────────────────
-
         plan_db = MissionPlan(
             version=version,
             status=PlanStatus.PROPOSED,
@@ -771,9 +874,6 @@ def generate_plans(db: Session, created_by_user_id: str) -> List[PlanResult]:
             ))
 
         db.commit()
-
-        # Forbid this plan's exact assignment set for the next iteration
-        forbidden_pairs.append(current_forbidden)
 
         plan_results.append(PlanResult(
             plan_id=plan_db.id,

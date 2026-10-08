@@ -124,6 +124,8 @@ def _mission_to_dict(m: Mission) -> dict:
         "required_aircraft_type": m.required_aircraft_type,
         "required_weapon_code":   m.required_weapon_code,
         "min_aircraft_count": m.min_aircraft_count,
+        "distance_km": m.distance_km,
+        "required_payload": m.required_payload,
         "notes": m.notes,
         "created_at": m.created_at.isoformat(),
     }
@@ -250,7 +252,10 @@ async def crew_readiness_summary(
     """Aggregate crew availability and fatigue summary."""
     crews = db.query(Crew).all()
     total = len(crews)
-    available   = sum(1 for c in crews if c.is_available)
+    available   = sum(1 for c in crews if c.is_available and c.rest_status != "MANDATORY_REST")
+    fit         = sum(1 for c in crews if c.rest_status == "RESTED" and c.is_available)
+    caution     = sum(1 for c in crews if c.rest_status == "FATIGUED" and c.is_available)
+    unfit       = sum(1 for c in crews if c.rest_status == "MANDATORY_REST" or not c.is_available)
     fatigued    = sum(1 for c in crews if c.rest_status == "FATIGUED")
     mandatory   = sum(1 for c in crews if c.rest_status == "MANDATORY_REST")
     by_role = {}
@@ -262,6 +267,9 @@ async def crew_readiness_summary(
     return {
         "total": total,
         "available": available,
+        "fit": fit,
+        "caution": caution,
+        "unfit": unfit,
         "fatigued": fatigued,
         "mandatory_rest": mandatory,
         "by_role": by_role,

@@ -56,6 +56,9 @@ def _aircraft_to_dict(a: Aircraft) -> dict:
         # Phase 1: operational readiness fields
         "mission_capable_status": a.mission_capable_status.value if a.mission_capable_status else "CAPABLE",
         "base_id": a.base_id,
+        "range_km": a.range_km,
+        "fuel_capacity": a.fuel_capacity,
+        "payload_capacity": a.payload_capacity,
     }
 
 

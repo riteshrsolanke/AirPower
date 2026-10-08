@@ -32,7 +32,7 @@ def log_audit(
     """Creates a chained audit log entry."""
     
     # Get previous log for the chain
-    last_log = db.query(AuditLog).order_by(desc(AuditLog.timestamp), desc(AuditLog.id)).first()
+    last_log = db.query(AuditLog).filter(AuditLog.current_hash.isnot(None)).order_by(desc(AuditLog.timestamp), desc(AuditLog.id)).first()
     prev_hash = last_log.current_hash if last_log and last_log.current_hash else "GENESIS"
     
     now = datetime.utcnow()
@@ -65,24 +65,21 @@ def verify_chain(db: Session) -> dict:
     Recalculates hashes from the beginning of time to verify the chain is intact.
     Returns whether the chain is valid and the ID of the broken link if any.
     """
-    logs = db.query(AuditLog).order_by(AuditLog.timestamp, AuditLog.id).all()
+    logs = db.query(AuditLog).filter(AuditLog.current_hash.isnot(None)).order_by(AuditLog.timestamp, AuditLog.id).all()
     
     expected_prev = "GENESIS"
     
     for log in logs:
         # Check if the chain connects
-        if log.previous_hash != expected_prev and log.previous_hash is not None: # Ignore pre-phase 6 logs without hashes
-            if not (log.previous_hash is None and expected_prev == "GENESIS"):
-                if log.current_hash is not None:
-                    return {"valid": False, "broken_at_id": log.id, "reason": "Chain link broken (prev_hash mismatch)"}
+        if log.previous_hash != expected_prev:
+            return {"valid": False, "broken_at_id": log.id, "reason": "Chain link broken (prev_hash mismatch)"}
         
-        # Recalculate hash (if it's a phase 6 log)
-        if log.current_hash:
-            user_id = log.user_id if log.user_id else "SYSTEM"
-            recalc = calculate_hash(log.previous_hash, log.timestamp, log.action, log.resource, log.result, user_id)
-            if recalc != log.current_hash:
-                return {"valid": False, "broken_at_id": log.id, "reason": "Data tampering detected (current_hash mismatch)"}
-            
-            expected_prev = log.current_hash
+        # Recalculate hash
+        user_id = log.user_id if log.user_id else "SYSTEM"
+        recalc = calculate_hash(log.previous_hash, log.timestamp, log.action, log.resource, log.result, user_id)
+        if recalc != log.current_hash:
+            return {"valid": False, "broken_at_id": log.id, "reason": "Data tampering detected (current_hash mismatch)"}
+        
+        expected_prev = log.current_hash
             
     return {"valid": True, "broken_at_id": None, "reason": "Chain intact"}

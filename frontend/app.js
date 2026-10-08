@@ -1962,45 +1962,112 @@ async function fetchEvents() {
   }
 }
 
+// ── Scenario Management (PS 26250 Phase 2) ──────────────────────────────
+async function fetchScenarioStatus() {
+  try {
+    const res = await apiFetch('/api/planning/scenario/status');
+    const badge = document.getElementById('scenario-status-badge');
+    const desc = document.getElementById('scenario-status-desc');
+    if (!badge || !desc) return;
+    
+    if (res.scenario === 'CONSTRAINED') {
+      badge.className = 'scenario-badge constrained';
+      badge.textContent = `⚡ ${res.name}`;
+      desc.textContent = `${res.description} (${res.mission_count} missions, ${res.aircraft_count} aircraft, ${res.crew_count} crew).`;
+    } else {
+      badge.className = 'scenario-badge baseline';
+      badge.textContent = `✓ ${res.name}`;
+      desc.textContent = `${res.description} (${res.mission_count} missions, ${res.aircraft_count} aircraft, ${res.crew_count} crew).`;
+    }
+  } catch (e) {
+    console.error('Failed to fetch scenario status:', e);
+  }
+}
+
+async function loadConstrainedScenario() {
+  try {
+    showToast('Loading SIH Constrained Demonstration Scenario...', 'info');
+    const res = await apiFetch('/api/planning/scenario/load-constrained', { method: 'POST' });
+    showToast(res.message || 'Constrained scenario loaded successfully.', 'success');
+    await fetchScenarioStatus();
+    await fetchPlans();
+    await fetchReadiness();
+    await fetchWhatIfOptions();
+  } catch (e) {
+    showToast(`Failed to load constrained scenario: ${e.message}`, 'error');
+  }
+}
+
+async function resetBaselineScenario() {
+  try {
+    showToast('Resetting to baseline operations scenario...', 'info');
+    const res = await apiFetch('/api/planning/scenario/reset-baseline', { method: 'POST' });
+    showToast(res.message || 'Baseline scenario restored.', 'success');
+    await fetchScenarioStatus();
+    await fetchPlans();
+    await fetchReadiness();
+    await fetchWhatIfOptions();
+  } catch (e) {
+    showToast(`Failed to reset scenario: ${e.message}`, 'error');
+  }
+}
+
+// ── Plans & Assignments (PuLP MILP) ──────────────────────────────────────────
 async function fetchPlans() {
   const tbody = document.querySelector('#plans-table tbody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="6" class="text-center">Loading plans...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="8" class="text-center">Loading plans...</td></tr>';
   try {
     const res = await apiFetch('/api/planning?limit=10');
     if (!res.plans || res.plans.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="text-center">No plans generated yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center">No plans generated yet. Click "Run Optimizer" above.</td></tr>';
       return;
     }
-    tbody.innerHTML = res.plans.map(p => `
-      <tr>
-        <td><strong>v${p.version}</strong></td>
-        <td><span class="status-badge status-${p.status.toLowerCase()}">${p.status}</span></td>
-        <td>${p.coverage_pct}%</td>
-        <td>${p.risk_score.toFixed(3)}</td>
-        <td><small>${p.summary}</small></td>
-        <td>
-          ${p.status === 'PROPOSED' ? `<button class="btn-sm" onclick="approvePlan('${p.id}')">Approve</button>` : ''}
-        </td>
-      </tr>
-    `).join('');
+    tbody.innerHTML = res.plans.map(p => {
+      let objectiveBadge = '<span class="status-badge" style="background:#475569;">DEFAULT</span>';
+      if (p.summary && p.summary.includes('MAX_COVERAGE')) {
+        objectiveBadge = '<span class="status-badge" style="background:#0284c7;">MAX_COVERAGE</span>';
+      } else if (p.summary && p.summary.includes('MIN_RISK')) {
+        objectiveBadge = '<span class="status-badge" style="background:#059669;">MIN_RISK</span>';
+      } else if (p.summary && p.summary.includes('RESOURCE_LEAN')) {
+        objectiveBadge = '<span class="status-badge" style="background:#d97706;">RESOURCE_LEAN</span>';
+      }
+
+      const statusColor = p.status === 'APPROVED' ? '#10b981' : p.status === 'PROPOSED' ? '#38bdf8' : '#94a3b8';
+
+      return `
+        <tr>
+          <td><strong>v${p.version}</strong></td>
+          <td>${objectiveBadge}</td>
+          <td><span class="status-badge" style="background:${statusColor};">${p.status}</span></td>
+          <td>${p.coverage_pct}%</td>
+          <td>${p.risk_score.toFixed(3)}</td>
+          <td>${p.resource_use || '—'}</td>
+          <td><small>${p.summary}</small></td>
+          <td style="white-space:nowrap;">
+            <button class="btn-sm btn-secondary" onclick="openPlanDetails('${p.id}')">View Details</button>
+            ${p.status === 'PROPOSED' ? `<button class="btn-sm btn-primary" onclick="approvePlan('${p.id}')">Approve (4-Eyes)</button>` : ''}
+          </td>
+        </tr>
+      `;
+    }).join('');
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="6" class="text-center error-text">Failed to load plans: ${err.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center error-text">Failed to load plans: ${err.message}</td></tr>`;
   }
 }
 
 async function generatePlans() {
   const btn = event.currentTarget;
   const originalHtml = btn.innerHTML;
-  btn.innerHTML = '⟳ Running...';
+  btn.innerHTML = '⟳ Running PuLP Solver...';
   btn.disabled = true;
   try {
     await apiFetch('/api/planning/generate', {
       method: 'POST',
       body: JSON.stringify({ note: 'Generated from UI' })
     });
-    showToast('Plans generated successfully.', 'success');
-    fetchPlans();
+    showToast('Multi-objective plans generated successfully.', 'success');
+    await fetchPlans();
   } catch (err) {
     showToast(`Failed to generate plans: ${err.message}`, 'error');
   } finally {
@@ -2012,79 +2079,607 @@ async function generatePlans() {
 async function approvePlan(planId) {
   try {
     await apiFetch(`/api/planning/${planId}/approve`, { method: 'POST' });
-    showToast('Plan approved successfully.', 'success');
-    fetchPlans();
+    showToast('Plan approved successfully (Four-Eyes validated).', 'success');
+    await fetchPlans();
   } catch (err) {
-    showToast(`Failed to approve plan: ${err.message}`, 'error');
+    showToast(`Approval failed: ${err.message}`, 'error');
+  }
+}
+
+async function openPlanDetails(planId) {
+  const modal = document.getElementById('plan-details-modal');
+  const body = document.getElementById('plan-details-body');
+  const title = document.getElementById('plan-details-title');
+  if (!modal || !body) return;
+
+  modal.classList.remove('hidden');
+  body.innerHTML = '<div class="loading">Loading assignments and feasibility explanations...</div>';
+  
+  try {
+    const plan = await apiFetch(`/api/planning/${planId}`);
+    title.textContent = `Plan v${plan.version} Assignment Matrix & Feasibility Evaluation`;
+    
+    if (!plan.assignments || plan.assignments.length === 0) {
+      body.innerHTML = '<p class="text-center" style="padding: 2rem;">No assignments recorded for this plan.</p>';
+      return;
+    }
+
+    let html = `
+      <div style="margin-bottom: 1rem; display: flex; gap: 1.5rem; background: rgba(15,23,42,0.6); padding: 0.75rem 1rem; border-radius: 6px;">
+        <div><strong>Status:</strong> ${plan.status}</div>
+        <div><strong>Coverage:</strong> ${plan.coverage_pct}%</div>
+        <div><strong>Risk Score:</strong> ${plan.risk_score.toFixed(3)}</div>
+        <div><strong>Assigned Sorties:</strong> ${plan.assignments.length}</div>
+      </div>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Mission</th>
+              <th>Type / Prio</th>
+              <th>Aircraft</th>
+              <th>Air Base</th>
+              <th>Crew</th>
+              <th>Feasibility & XAI Evaluation Checklist</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    plan.assignments.forEach(a => {
+      const xai = a.explainability || {};
+      const checks = xai.constraints_evaluated || [];
+      const checksHtml = checks.length > 0
+        ? checks.map(c => `<div class="explain-item"><span class="${c.passed ? 'explain-pass' : 'explain-fail'}">${c.passed ? '✓' : '✗'}</span> <span>${c.description}</span></div>`).join('')
+        : `<div style="font-size:0.8rem; color:#94a3b8;">${a.rationale || 'Feasible allocation.'}</div>`;
+
+      html += `
+        <tr>
+          <td><strong>${a.mission_name || a.mission_id}</strong></td>
+          <td><span class="status-badge" style="background:#334155;">${a.mission_type || 'STRIKE'}</span></td>
+          <td>
+            <strong>${a.aircraft_id}</strong><br>
+            <small style="color:#94a3b8;">${a.aircraft_model || 'Fighter'}</small>
+          </td>
+          <td>${a.base_name || a.base_id || 'Base Alpha'}</td>
+          <td>
+            ${a.crew_name ? `<strong>${a.crew_name}</strong><br><small style="color:#94a3b8;">${a.crew_role || ''} (${a.crew_rest_status || 'FIT'})</small>` : 'Unassigned'}
+          </td>
+          <td>${checksHtml}</td>
+        </tr>
+      `;
+    });
+
+    html += `
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    body.innerHTML = html;
+  } catch (err) {
+    body.innerHTML = `<div class="error-state">Failed to load plan details: ${err.message}</div>`;
+  }
+}
+
+function closePlanDetailsModal() {
+  const modal = document.getElementById('plan-details-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+// ── Operational What-If Planning Sandbox (PS 26250 Phase 1) ─────────────────
+let cachedWhatIfOptions = null;
+let lastSimulationResult = null;
+
+async function fetchWhatIfOptions() {
+  try {
+    const res = await apiFetch('/api/planning/whatif/options');
+    cachedWhatIfOptions = res;
+    onWhatIfScenarioChange();
+    onEventTypeChange();
+  } catch (e) {
+    console.error('Failed to fetch what-if options:', e);
+  }
+}
+
+function onWhatIfScenarioChange() {
+  const select = document.getElementById('whatif-scenario-select');
+  const entitySelect = document.getElementById('whatif-entity-select');
+  if (!select || !entitySelect || !cachedWhatIfOptions) return;
+
+  const type = select.value;
+  entitySelect.innerHTML = '';
+
+  if (type === 'AIRCRAFT_UNAVAILABLE') {
+    (cachedWhatIfOptions.aircraft || []).forEach(a => {
+      const opt = document.createElement('option');
+      opt.value = a.id;
+      opt.textContent = `${a.id} — ${a.type} (Health: ${Math.round(a.health)}%, Capable: ${a.mission_capable_status})`;
+      entitySelect.appendChild(opt);
+    });
+  } else if (type === 'CREW_UNAVAILABLE') {
+    (cachedWhatIfOptions.crews || []).forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = `${c.name} (${c.rank}, ${c.role}) — ${c.rest_status}`;
+      entitySelect.appendChild(opt);
+    });
+  } else if (type === 'BASE_UNAVAILABLE') {
+    (cachedWhatIfOptions.bases || []).forEach(b => {
+      const opt = document.createElement('option');
+      opt.value = b.id;
+      opt.textContent = `${b.name} (${b.icao}) — Max Cap: ${b.max_capacity}`;
+      entitySelect.appendChild(opt);
+    });
+  } else if (type === 'WEATHER_RESTRICTION') {
+    (cachedWhatIfOptions.bases || []).forEach(b => {
+      const opt = document.createElement('option');
+      opt.value = b.name;
+      opt.textContent = `Region / Runway: ${b.name}`;
+      entitySelect.appendChild(opt);
+    });
+  } else if (type === 'RESOURCE_SHORTAGE') {
+    (cachedWhatIfOptions.bases || []).forEach(b => {
+      const opt = document.createElement('option');
+      opt.value = b.id;
+      opt.textContent = `Depot at ${b.name} (Fuel / Munitions)`;
+      entitySelect.appendChild(opt);
+    });
+  } else if (type === 'NEW_PRIORITY_MISSION') {
+    (cachedWhatIfOptions.missions || []).forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = `Mission: ${m.name} (${m.type}, Priority ${m.priority})`;
+      entitySelect.appendChild(opt);
+    });
+  }
+}
+
+async function runWhatIfSimulation() {
+  const scenarioType = document.getElementById('whatif-scenario-select').value;
+  const entityId = document.getElementById('whatif-entity-select').value;
+  const objective = document.getElementById('whatif-objective-select').value;
+  const param = document.getElementById('whatif-param-input').value.trim();
+  const btn = document.getElementById('run-whatif-btn');
+  const container = document.getElementById('whatif-results-container');
+
+  if (!btn || !container) return;
+
+  btn.disabled = true;
+  btn.textContent = '⟳ Running In-Memory Simulation...';
+  container.classList.remove('hidden');
+  container.innerHTML = '<div class="loading">Evaluating synthetic constraints and re-solving MILP model...</div>';
+
+  try {
+    const payload = {
+      scenario_type: scenarioType,
+      entity_id: entityId,
+      objective: objective,
+      parameters: { note: param || 'Simulated what-if run' }
+    };
+
+    const res = await apiFetch('/api/planning/whatif', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+
+    lastSimulationResult = res;
+
+    // Render results
+    const cur = res.current_plan;
+    const sim = res.simulated_plan;
+    const diff = res.plan_diff || [];
+
+    const replaced = diff.filter(d => d.change_type === 'REPLACED');
+    const removed  = diff.filter(d => d.change_type === 'REMOVED');
+    const added    = diff.filter(d => d.change_type === 'ADDED');
+    const retained = diff.filter(d => d.change_type === 'RETAINED');
+
+    let html = `
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:1rem;">
+        <div>
+          <h4 style="margin:0; color:#38bdf8; font-size:1.1rem;">Simulation Comparison: Current Plan vs Simulated Plan</h4>
+          <span class="simulation-disclaimer" style="margin-top:0.25rem;">SIMULATED DECISION SUPPORT — SYNTHETIC DATA</span>
+        </div>
+        <div>
+          <button class="btn-primary" onclick="promoteWhatIfSimulation()">
+            Promote to Pending Plan (4-Eyes Approval Required)
+          </button>
+        </div>
+      </div>
+
+      <div class="score-comparison-bar">
+        <div class="score-metric">
+          <span class="lbl">Coverage</span>
+          <span class="val">${cur.coverage_pct}% ➔ <strong style="color:${sim.coverage_pct >= cur.coverage_pct ? '#34d399' : '#f87171'};">${sim.coverage_pct}%</strong></span>
+        </div>
+        <div class="score-metric">
+          <span class="lbl">Risk Index</span>
+          <span class="val">${cur.risk_score.toFixed(3)} ➔ <strong style="color:${sim.risk_score <= cur.risk_score ? '#34d399' : '#fbbf24'};">${sim.risk_score.toFixed(3)}</strong></span>
+        </div>
+        <div class="score-metric">
+          <span class="lbl">Sorties</span>
+          <span class="val">${cur.resource_use} ➔ <strong>${sim.resource_use}</strong></span>
+        </div>
+        <div class="score-metric">
+          <span class="lbl">Objective Score</span>
+          <span class="val">${sim.objective_score.toFixed(2)}</span>
+        </div>
+        <div class="score-metric">
+          <span class="lbl">Delta Summary</span>
+          <span class="val" style="font-size:0.85rem; font-weight:normal; color:#94a3b8; padding-top:2px;">
+            ${replaced.length} replaced, ${removed.length} dropped, ${added.length} added, ${retained.length} retained
+          </span>
+        </div>
+      </div>
+
+      <h5 style="margin: 1rem 0 0.5rem 0; color:#cbd5e1;">Plan Difference Impact Cards:</h5>
+      <div class="diff-card-grid">
+    `;
+
+    diff.forEach(c => {
+      const cls = c.change_type.toLowerCase();
+      html += `
+        <div class="diff-card ${cls}">
+          <span class="diff-tag ${cls}">${c.change_type}</span>
+          <div class="diff-title">${c.mission_name || c.mission_id}</div>
+          <div class="diff-comparison">
+            <div>
+              <small style="color:#94a3b8; display:block;">Current</small>
+              <strong>${c.prev_aircraft_id || 'None'}</strong>
+              ${c.prev_crew_id ? `<br><small style="color:#64748b;">${c.prev_crew_id}</small>` : ''}
+            </div>
+            <div class="diff-arrow">➔</div>
+            <div>
+              <small style="color:#94a3b8; display:block;">Simulated</small>
+              <strong style="color:${c.new_aircraft_id ? '#38bdf8' : '#f87171'};">${c.new_aircraft_id || 'Unassigned'}</strong>
+              ${c.new_crew_id ? `<br><small style="color:#64748b;">${c.new_crew_id}</small>` : ''}
+            </div>
+          </div>
+          <div class="diff-reason">
+            <strong>Reason:</strong> ${c.note || 'Objective optimisation tradeoff.'}
+          </div>
+        </div>
+      `;
+    });
+
+    html += `</div>`;
+    container.innerHTML = html;
+
+  } catch (e) {
+    container.innerHTML = `<div class="error-state">What-If simulation failed: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🚀 Run What-If Simulation';
+  }
+}
+
+async function promoteWhatIfSimulation() {
+  if (!lastSimulationResult) {
+    showToast('No active simulation to promote.', 'warning');
+    return;
+  }
+  const note = prompt('Enter justification note for promoting this simulation to a proposed plan (will require four-eyes signoff):', 'Promoted from What-If Planning Sandbox');
+  if (note === null) return;
+
+  try {
+    const res = await apiFetch('/api/planning/whatif/promote', {
+      method: 'POST',
+      body: JSON.stringify({
+        simulation_result: lastSimulationResult,
+        note: note || 'Promoted from What-If'
+      })
+    });
+    showToast(res.message || 'Plan promoted to PROPOSED status. Awaiting four-eyes approval.', 'success');
+    await fetchPlans();
+  } catch (e) {
+    showToast(`Promotion failed: ${e.message}`, 'error');
+  }
+}
+
+// ── Dynamic Retasking Event Injection (Phase 7) ─────────────────────────────
+function onEventTypeChange() {
+  const typeSelect = document.getElementById('event-type-select');
+  const entitySelect = document.getElementById('event-entity-select');
+  const jsonEditor = document.getElementById('event-json-editor');
+  if (!typeSelect || !entitySelect || !cachedWhatIfOptions) return;
+
+  const type = typeSelect.value;
+  entitySelect.innerHTML = '';
+
+  let defaultPayload = {};
+
+  if (type === 'AIRCRAFT_UNSERVICEABLE') {
+    (cachedWhatIfOptions.aircraft || []).forEach(a => {
+      const opt = document.createElement('option');
+      opt.value = a.id;
+      opt.textContent = `${a.id} (${a.type})`;
+      entitySelect.appendChild(opt);
+    });
+    defaultPayload = { aircraft_id: (cachedWhatIfOptions.aircraft[0] || {}).id || 'DEMO-A001', new_status: 'GROUNDED', reason: 'Technical fault' };
+  } else if (type === 'CREW_UNAVAILABLE') {
+    (cachedWhatIfOptions.crews || []).forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = `${c.name} (${c.role})`;
+      entitySelect.appendChild(opt);
+    });
+    defaultPayload = { crew_id: (cachedWhatIfOptions.crews[0] || {}).id || 'DEMO-C001', reason: 'Medical grounding' };
+  } else if (type === 'WEATHER_CLOSURE') {
+    (cachedWhatIfOptions.bases || []).forEach(b => {
+      const opt = document.createElement('option');
+      opt.value = b.name;
+      opt.textContent = `${b.name} (${b.icao})`;
+      entitySelect.appendChild(opt);
+    });
+    defaultPayload = { base_name: (cachedWhatIfOptions.bases[0] || {}).name || 'Base Alpha', reason: 'Heavy thunderstorms' };
+  } else if (type === 'NEW_THREAT') {
+    const threats = [
+      { name: 'SAM-SECTOR-NORTH', type: 'SAM', lat: 28.5, lon: 77.2, radius: 45, sev: 5 },
+      { name: 'RADAR-JAMMING-WEST', type: 'RADAR', lat: 26.2, lon: 73.1, radius: 60, sev: 4 },
+      { name: 'AIR-DEFENCE-SOUTH', type: 'AAA', lat: 24.1, lon: 72.8, radius: 30, sev: 3 }
+    ];
+    threats.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = JSON.stringify(t);
+      opt.textContent = `${t.name} (${t.type}, Severity ${t.sev})`;
+      entitySelect.appendChild(opt);
+    });
+    defaultPayload = threats[0];
+  } else if (type === 'NEW_PRIORITY_MISSION') {
+    const missions = [
+      { name: 'URGENT-STRIKE-01', mission_type: 'STRIKE', priority: 1, duration: 2.5, count: 1 },
+      { name: 'URGENT-CAS-02', mission_type: 'CAS', priority: 1, duration: 2.0, count: 1 },
+      { name: 'URGENT-SEAD-03', mission_type: 'SEAD', priority: 1, duration: 3.0, count: 1 }
+    ];
+    missions.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = JSON.stringify(m);
+      opt.textContent = `${m.name} (${m.mission_type}, Priority 1)`;
+      entitySelect.appendChild(opt);
+    });
+    defaultPayload = missions[0];
+  }
+
+  if (jsonEditor) {
+    jsonEditor.value = JSON.stringify(defaultPayload, null, 2);
+  }
+}
+
+function toggleEventDevMode() {
+  const isDev = document.getElementById('event-dev-toggle').checked;
+  const friendlyUI = document.getElementById('event-friendly-ui');
+  const rawUI = document.getElementById('event-raw-ui');
+  if (isDev) {
+    friendlyUI.classList.add('hidden');
+    rawUI.classList.remove('hidden');
+  } else {
+    friendlyUI.classList.remove('hidden');
+    rawUI.classList.add('hidden');
   }
 }
 
 async function injectEvent() {
   const typeSelect = document.getElementById('event-type-select');
-  const type = typeSelect.value;
-  const btn = event.currentTarget;
-  const originalHtml = btn.innerHTML;
+  const entitySelect = document.getElementById('event-entity-select');
+  const detailInput = document.getElementById('event-detail-input');
+  const isDev = document.getElementById('event-dev-toggle').checked;
+  const jsonEditor = document.getElementById('event-json-editor');
+  const btn = document.getElementById('inject-event-btn');
   const diffContainer = document.getElementById('event-result-diff');
-  
-  btn.innerHTML = 'Injecting...';
-  btn.disabled = true;
-  diffContainer.innerHTML = '<div class="loading">Processing event...</div>';
-  
+
+  const type = typeSelect.value;
+  const detail = detailInput ? detailInput.value.trim() : '';
+
   let payload = {};
-  if (type === 'AIRCRAFT_UNSERVICEABLE') {
-    payload = { aircraft_id: 'DEMO-A001', new_status: 'GROUNDED', reason: 'UI Injected Fault' };
-  } else if (type === 'NEW_THREAT') {
-    payload = { name: 'UI-THREAT', threat_type: 'SAM', center_lat: 28, center_lon: 77, radius_km: 50, severity: 5 };
-  } else if (type === 'WEATHER_CLOSURE') {
-    payload = { base_name: 'Base Alpha', reason: 'UI Injected Weather' };
-  } else if (type === 'NEW_PRIORITY_MISSION') {
-    payload = { name: 'UI-MISSION', mission_type: 'CAS', priority: 1, estimated_duration_hours: 2, min_aircraft_count: 1 };
+
+  if (isDev) {
+    try {
+      payload = JSON.parse(jsonEditor.value);
+    } catch (e) {
+      showToast('Invalid JSON in developer editor: ' + e.message, 'error');
+      return;
+    }
+  } else {
+    const rawVal = entitySelect.value;
+    if (type === 'AIRCRAFT_UNSERVICEABLE') {
+      payload = { aircraft_id: rawVal, new_status: 'GROUNDED', reason: detail || 'Technical unserviceability' };
+    } else if (type === 'CREW_UNAVAILABLE') {
+      payload = { crew_id: rawVal, reason: detail || 'Crew medical/fatigue grounding' };
+    } else if (type === 'WEATHER_CLOSURE') {
+      payload = { base_name: rawVal, reason: detail || 'Runway below operational minimums' };
+    } else if (type === 'NEW_THREAT' || type === 'NEW_PRIORITY_MISSION') {
+      try {
+        payload = JSON.parse(rawVal);
+        if (detail) payload.reason = detail;
+      } catch {
+        payload = { entity: rawVal, reason: detail };
+      }
+    }
   }
+
+  btn.innerHTML = '⟳ Retasking Fleet...';
+  btn.disabled = true;
+  diffContainer.innerHTML = '<div class="loading">Evaluating operational impact and solving retasked MILP...</div>';
 
   try {
     const res = await apiFetch('/api/events', {
       method: 'POST',
       body: JSON.stringify({ event_type: type, payload })
     });
-    
+
     let diffHtml = `
-      <div class="card" style="background:#0f172a; border-left:4px solid #3b82f6;">
-        <h4>Event Result</h4>
+      <div class="card" style="background:#0f172a; border-left:4px solid #3b82f6; margin-top:1rem; padding:1.25rem;">
+        <h4 style="color:#38bdf8; margin-bottom:0.5rem;">Event Injection Result</h4>
         <p>${res.message}</p>
     `;
-    
+
     if (res.retask_triggered && res.plan_diff) {
-      diffHtml += `<ul style="margin-top:0.5rem; padding-left:1.5rem; font-size:0.9rem;">`;
+      diffHtml += `<h5 style="margin-top:1rem; color:#cbd5e1;">Generated Plan Retask Changes:</h5>`;
+      diffHtml += `<div class="diff-card-grid" style="margin-top:0.5rem;">`;
       res.plan_diff.forEach(c => {
-        if (c.change_type !== 'RETAINED') {
-          diffHtml += `<li><strong>[${c.change_type}]</strong> ${c.mission_name}: ${c.prev_aircraft_id || 'None'} ➔ ${c.new_aircraft_id || 'None'}</li>`;
-        }
+        const cls = c.change_type.toLowerCase();
+        diffHtml += `
+          <div class="diff-card ${cls}">
+            <span class="diff-tag ${cls}">${c.change_type}</span>
+            <div class="diff-title">${c.mission_name || c.mission_id}</div>
+            <div class="diff-comparison">
+              <div>
+                <small style="color:#94a3b8; display:block;">Previous</small>
+                <strong>${c.prev_aircraft_id || 'None'}</strong>
+              </div>
+              <div class="diff-arrow">➔</div>
+              <div>
+                <small style="color:#94a3b8; display:block;">New Retask</small>
+                <strong style="color:${c.new_aircraft_id ? '#38bdf8' : '#f87171'};">${c.new_aircraft_id || 'Dropped'}</strong>
+              </div>
+            </div>
+            <div class="diff-reason"><strong>Reason:</strong> ${c.note || 'Retasked'}</div>
+          </div>
+        `;
       });
-      diffHtml += `</ul>`;
+      diffHtml += `</div>`;
     }
-    
+
     diffHtml += `</div>`;
     diffContainer.innerHTML = diffHtml;
-    fetchPlans();
-    fetchEvents();
+
+    await fetchPlans();
+    await fetchEvents();
+    await fetchReadiness();
   } catch (err) {
     diffContainer.innerHTML = `<div class="error-state">Failed to inject event: ${err.message}</div>`;
   } finally {
-    btn.innerHTML = originalHtml;
+    btn.innerHTML = '⚡ Inject Event & Trigger Retask';
     btn.disabled = false;
   }
 }
 
+// ── Operational Readiness (Fleet, Crew, Spares — Phase 3) ───────────────────
 async function fetchReadiness() {
   try {
-    const res = await apiFetch('/api/aircraft');
-    const aircraft = res.aircraft || [];
+    const [resAircraft, resCrew, resWeapons] = await Promise.all([
+      apiFetch('/api/aircraft'),
+      apiFetch('/api/crews/summary/readiness'),
+      apiFetch('/api/weapons/inventory')
+    ]);
+
+    const aircraft = resAircraft.aircraft || [];
     const capable = aircraft.filter(a => a.mission_capable_status === 'CAPABLE').length;
+    const limited = aircraft.filter(a => a.mission_capable_status === 'LIMITED').length;
+    const grounded = aircraft.filter(a => a.mission_capable_status === 'GROUNDED').length;
+
+    // Remove hardcoded statistics
     document.getElementById('stat-readiness-aircraft').textContent = `${capable} / ${aircraft.length}`;
-    document.getElementById('stat-readiness-crew').textContent = `12 / 12`; // Mock for demo
-    document.getElementById('stat-readiness-weapons').textContent = `OK`; // Mock for demo
+    document.getElementById('stat-readiness-crew').textContent = `${resCrew.available} / ${resCrew.total}`;
+
+    const inventory = resWeapons.inventory || [];
+    const totalWeapons = inventory.reduce((acc, i) => acc + (i.quantity || 0), 0);
+    const availWeapons = inventory.reduce((acc, i) => acc + (i.available_quantity || 0), 0);
+    document.getElementById('stat-readiness-weapons').textContent = `${availWeapons} / ${totalWeapons}`;
+
+    // Populate operational readiness breakdown
+    const breakdownEl = document.getElementById('operational-readiness-breakdown');
+    if (breakdownEl) {
+      breakdownEl.innerHTML = `
+        <div class="dashboard-grid" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem;">
+          <div class="card" style="background:#0f172a;">
+            <div class="card-header"><h4>Fleet Capability Distribution</h4></div>
+            <div style="padding:1rem;">
+              <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">
+                <span style="color:#10b981;">● Mission Capable</span>
+                <strong>${capable} (${Math.round((capable / (aircraft.length || 1)) * 100)}%)</strong>
+              </div>
+              <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">
+                <span style="color:#f59e0b;">● Limited Service</span>
+                <strong>${limited} (${Math.round((limited / (aircraft.length || 1)) * 100)}%)</strong>
+              </div>
+              <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">
+                <span style="color:#ef4444;">● Grounded / Maintenance</span>
+                <strong>${grounded} (${Math.round((grounded / (aircraft.length || 1)) * 100)}%)</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="background:#0f172a;">
+            <div class="card-header"><h4>Crew Fatigue & Readiness</h4></div>
+            <div style="padding:1rem;">
+              <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">
+                <span style="color:#10b981;">✓ Fit for Duty</span>
+                <strong>${resCrew.fit} / ${resCrew.total}</strong>
+              </div>
+              <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">
+                <span style="color:#f59e0b;">⚠ Caution / Elevated Fatigue</span>
+                <strong>${resCrew.caution}</strong>
+              </div>
+              <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">
+                <span style="color:#ef4444;">🔴 Unfit / Mandatory Rest</span>
+                <strong>${resCrew.unfit}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="background:#0f172a;">
+            <div class="card-header"><h4>Armament & Munitions Stock</h4></div>
+            <div style="padding:1rem;">
+              <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">
+                <span>Total Stored Quantity</span>
+                <strong>${totalWeapons} units</strong>
+              </div>
+              <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">
+                <span>Available Ready-for-Load</span>
+                <strong style="color:#38bdf8;">${availWeapons} units</strong>
+              </div>
+              <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">
+                <span>Reserved / Loaded</span>
+                <strong>${totalWeapons - availWeapons} units</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
   } catch (e) {
-    console.error(e);
+    console.error('Failed to fetch readiness data:', e);
+  }
+}
+
+// ── MFA Demo Helpers ────────────────────────────────────────────────────────
+let demoCurrentTOTP = null;
+
+async function showLoginMFAQr() {
+  const box = document.getElementById('login-mfa-qr-box');
+  const imgDiv = document.getElementById('login-mfa-qr-img');
+  const textDiv = document.getElementById('login-mfa-secret-text');
+  if (!state.tempToken) {
+    showToast('No active login session.', 'warning');
+    return;
+  }
+  try {
+    const res = await apiFetch('/api/auth/mfa/setup-info', {
+      method: 'POST',
+      body: JSON.stringify({ temp_token: state.tempToken })
+    });
+    imgDiv.innerHTML = `<img src="${res.qr_code}" alt="TOTP QR Code" style="width:160px; height:160px; border-radius:4px;" />`;
+    textDiv.textContent = `Secret Key: ${res.secret}`;
+    demoCurrentTOTP = res.demo_current_code;
+    box.classList.remove('hidden');
+  } catch (e) {
+    showToast(`Failed to load MFA QR: ${e.message}`, 'error');
+  }
+}
+
+function autoFillDemoTOTP() {
+  if (demoCurrentTOTP) {
+    document.getElementById('mfa-code').value = demoCurrentTOTP;
+    doMFAVerify();
+  } else {
+    showLoginMFAQr().then(() => {
+      if (demoCurrentTOTP) {
+        document.getElementById('mfa-code').value = demoCurrentTOTP;
+        doMFAVerify();
+      }
+    });
   }
 }
 
@@ -2097,8 +2692,15 @@ navigate = function(page, param = null) {
     // setTimeout to allow the DOM element to be visible before map invalidates size
     setTimeout(initGISMap, 100);
   }
-  if (page === 'plan') fetchPlans();
-  if (page === 'readiness') fetchReadiness();
+  if (page === 'plan') {
+    fetchPlans();
+    fetchScenarioStatus();
+    fetchWhatIfOptions();
+  }
+  if (page === 'readiness') {
+    fetchReadiness();
+    if (typeof loadCrewFatigue === 'function') loadCrewFatigue();
+  }
 };
 
 
