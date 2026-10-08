@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Air Power — Predictive Maintenance & Fleet Availability</title>
+  <meta name="description" content="AI-powered predictive maintenance and fleet availability platform for demonstration and training purposes using synthetic data." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  
+  <!-- Leaflet GIS Map Integration -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Login Page -->
+    <div id="login-page" class="auth-page">
+      <div class="auth-container">
+        <div class="auth-header">
+          <div class="auth-logo">
+            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M24 4L40 20H32V36H16V20H8L24 4Z" fill="url(#logo-grad)" />
+              <path d="M12 36H36V40H12V36Z" fill="url(#logo-grad)" opacity="0.7"/>
+              <defs>
+                <linearGradient id="logo-grad" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stop-color="#38bdf8"/>
+                  <stop offset="100%" stop-color="#6366f1"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <h1>Air Power</h1>
+          <p class="auth-subtitle">Predictive Maintenance & Fleet Availability</p>
+          <div class="demo-badge">⚠ Synthetic Demonstration Data</div>
+        </div>
+
+        <div id="login-step" class="auth-form-section active">
+          <h2>Secure Login</h2>
+          <p class="form-hint">Enter your credentials to continue</p>
+          <div id="login-error" class="error-banner hidden"></div>
+
+          <div class="form-group">
+            <label for="login-username">Username or Email</label>
+            <input type="text" id="login-username" placeholder="admin" autocomplete="username" />
+          </div>
+          <div class="form-group">
+            <label for="login-password">Password</label>
+            <div class="input-with-icon">
+              <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" />
+              <button class="icon-btn" onclick="togglePassword('login-password')">👁</button>
+            </div>
+          </div>
+
+          <button class="btn-primary btn-full" id="login-btn" onclick="doLogin()">
+            <span class="btn-text">Sign In</span>
+            <span class="btn-spinner hidden">⟳</span>
+          </button>
+
+          <div class="demo-accounts-hint">
+            <strong>Demo Accounts:</strong><br>
+            admin / Admin@Demo2026! &nbsp;|&nbsp; maintenance_mgr / Maint@Demo2026!<br>
+            analyst / Analyst@Demo2026! &nbsp;|&nbsp; viewer / Viewer@Demo2026!
+          </div>
+        </div>
+
+        <div id="mfa-step" class="auth-form-section">
+          <div class="mfa-icon">🔐</div>
+          <h2>Multi-Factor Authentication</h2>
+          <p class="form-hint">Enter the 6-digit code from your authenticator app</p>
+          <div id="mfa-error" class="error-banner hidden"></div>
+
+          <div class="form-group">
+            <label for="mfa-code">Authentication Code</label>
+            <input type="text" id="mfa-code" placeholder="000000" maxlength="6" 
+                   inputmode="numeric" pattern="[0-9]{6}" class="otp-input"
+                   onkeyup="if(this.value.length===6) doMFAVerify()" />
+          </div>
+          <button class="btn-primary btn-full" onclick="doMFAVerify()">Verify Code</button>
+          <button class="btn-ghost btn-full" onclick="showLoginStep()">← Back to Login</button>
+        </div>
+
+        <div class="auth-footer">
+          <p>🔒 Prototype for training and demonstration using synthetic data.<br>Not connected to operational defence systems.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main App Shell -->
+    <div id="main-app" class="hidden">
+      <!-- Sidebar -->
+      <nav id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-logo">
+            <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" width="32" height="32">
+              <path d="M16 2L28 14H22V24H10V14H4L16 2Z" fill="url(#slogo-grad)"/>
+              <defs>
+                <linearGradient id="slogo-grad" x1="0" y1="0" x2="32" y2="32">
+                  <stop offset="0%" stop-color="#38bdf8"/><stop offset="100%" stop-color="#6366f1"/>
+                </linearGradient>
+              </defs>
+            </svg>
+            <span class="sidebar-title">Air Power</span>
+          </div>
+          <button class="sidebar-close" onclick="toggleSidebar()">✕</button>
+        </div>
+
+        <div class="sidebar-user">
+          <div class="user-avatar" id="sidebar-avatar">A</div>
+          <div class="user-info">
+            <div id="sidebar-username" class="user-name">User</div>
+            <div id="sidebar-role" class="user-role">VIEWER</div>
+          </div>
+        </div>
+
+        <ul class="nav-menu">
+          <li class="nav-section-title">Common Operating Picture</li>
+          <li><a href="#" class="nav-item active" data-page="picture" onclick="navigate('picture')">
+            <span class="nav-icon">🗺</span> PICTURE (Map)
+          </a></li>
+          <li><a href="#" class="nav-item" data-page="plan" onclick="navigate('plan')">
+            <span class="nav-icon">🗓</span> PLAN (Mission)
+          </a></li>
+          <li><a href="#" class="nav-item" data-page="readiness" onclick="navigate('readiness')">
+            <span class="nav-icon">📊</span> READINESS (Fleet)
+          </a></li>
+          <li class="nav-section-title" style="margin-top: 1rem;">Maintenance & Legacy</li>
+          <li><a href="#" class="nav-item" data-page="dashboard" onclick="navigate('dashboard')">
+            <span class="nav-icon">⊞</span> Dashboard
+          </a></li>
+          <li><a href="#" class="nav-item" data-page="aircraft" onclick="navigate('aircraft')">
+            <span class="nav-icon">✈</span> Aircraft Fleet
+          </a></li>
+          <li><a href="#" class="nav-item" data-page="monitoring" onclick="navigate('monitoring')">
+            <span class="nav-icon">📡</span> Live Monitoring
+          </a></li>
+          <li><a href="#" class="nav-item" data-page="predictions" onclick="navigate('predictions')">
+            <span class="nav-icon">🤖</span> AI Predictions
+          </a></li>
+          <li><a href="#" class="nav-item" data-page="maintenance" onclick="navigate('maintenance')">
+            <span class="nav-icon">🔧</span> Maintenance
+          </a></li>
+          <li><a href="#" class="nav-item" data-page="spares" onclick="navigate('spares')">
+            <span class="nav-icon">📦</span> Spare Parts
+          </a></li>
+          <li><a href="#" class="nav-item" data-page="fleet" onclick="navigate('fleet')">
+            <span class="nav-icon">📊</span> Fleet Availability
+          </a></li>
+          <li><a href="#" class="nav-item" data-page="alerts" onclick="navigate('alerts')">
+            <span class="nav-icon">🚨</span> Alerts <span id="alert-badge" class="badge hidden">0</span>
+          </a></li>
+          <li><a href="#" class="nav-item" data-page="reports" onclick="navigate('reports')">
+            <span class="nav-icon">📋</span> Reports
+          </a></li>
+          <li><a href="#" class="nav-item" data-page="audit" onclick="navigate('audit')">
+            <span class="nav-icon">🔒</span> Audit & Security
+          </a></li>
+          <li><a href="#" class="nav-item" data-page="demo" onclick="navigate('demo')">
+            <span class="nav-icon">▶</span> Demo Mode
+          </a></li>
+        </ul>
+
+        <div class="sidebar-footer">
+          <button class="btn-logout" onclick="doLogout()">⏻ Logout</button>
+        </div>
+      </nav>
+
+      <!-- Content Area -->
+      <div class="content-area">
+        <!-- Top Bar -->
+        <header class="topbar">
+          <button class="hamburger" onclick="toggleSidebar()">☰</button>
+          <div class="topbar-title" id="page-title">Dashboard</div>
+          <div class="topbar-actions">
+            <div id="search-container" class="search-container">
+              <input type="text" id="global-search" placeholder="Search aircraft, components..." 
+                     onkeyup="handleSearch(this.value)" />
+              <div id="search-results" class="search-results hidden"></div>
+            </div>
+            <button class="icon-btn-round" onclick="navigate('alerts')" title="Alerts">
+              🚨 <span id="topbar-alert-badge" class="badge-mini hidden">0</span>
+            </button>
+            <button class="icon-btn-round" onclick="refreshCurrentPage()" title="Refresh">↻</button>
+          </div>
+        </header>
+
+        <!-- Pages -->
+        <main class="page-content">
+
+          <!-- DASHBOARD PAGE -->
+          <div id="page-dashboard" class="page active">
+            <div class="page-header">
+              <h1>Air Fleet Health Command Dashboard</h1>
+              <p class="page-subtitle">Real-time fleet status from synthetic training data</p>
+            </div>
+
+            <div class="stats-grid" id="dashboard-stats">
+              <div class="stat-card total">
+                <div class="stat-icon">✈</div>
+                <div class="stat-value" id="stat-total">—</div>
+                <div class="stat-label">Total Aircraft</div>
+              </div>
+              <div class="stat-card available">
+                <div class="stat-icon">✓</div>
+                <div class="stat-value" id="stat-available">—</div>
+                <div class="stat-label">Available</div>
+              </div>
+              <div class="stat-card maintenance">
+                <div class="stat-icon">🔧</div>
+                <div class="stat-value" id="stat-maintenance">—</div>
+                <div class="stat-label">Under Maintenance</div>
+              </div>
+              <div class="stat-card warning">
+                <div class="stat-icon">⚠</div>
+                <div class="stat-value" id="stat-warning">—</div>
+                <div class="stat-label">Warning</div>
+              </div>
+              <div class="stat-card critical">
+                <div class="stat-icon">🔴</div>
+                <div class="stat-value" id="stat-critical">—</div>
+                <div class="stat-label">Critical</div>
+              </div>
+              <div class="stat-card availability">
+                <div class="stat-icon">📊</div>
+                <div class="stat-value" id="stat-availability">—</div>
+                <div class="stat-label">Fleet Availability</div>
+              </div>
+              <div class="stat-card alerts-stat">
+                <div class="stat-icon">🚨</div>
+                <div class="stat-value" id="stat-alerts">—</div>
+                <div class="stat-label">Active Alerts</div>
+              </div>
+              <div class="stat-card health-stat">
+                <div class="stat-icon">❤</div>
+                <div class="stat-value" id="stat-avg-health">—</div>
+                <div class="stat-label">Avg Health Score</div>
+              </div>
+            </div>
+
+            <div class="dashboard-grid">
+              <div class="card">
+                <div class="card-header">
+                  <h3>Fleet Status Distribution</h3>
+                  <span class="card-badge">Live</span>
+                </div>
+                <div class="chart-container"><canvas id="fleet-status-chart"></canvas></div>
+              </div>
+
+              <div class="card">
+                <div class="card-header">
+                  <h3>High Risk Aircraft</h3>
+                  <button class="btn-sm" onclick="navigate('aircraft')">View All</button>
+                </div>
+                <div id="high-risk-list" class="risk-list">
+                  <div class="loading">Loading...</div>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-header">
+                  <h3>Active Alerts</h3>
+                  <button class="btn-sm" onclick="navigate('alerts')">View All</button>
+                </div>
+                <div id="recent-alerts-list" class="alerts-list">
+                  <div class="loading">Loading...</div>
+                </div>
+              </div>
+              
+              <div class="card" id="model-health-panel" style="display:none;">
+                <div class="card-header">
+                  <h3>ML Model Health</h3>
+                  <span class="card-badge" style="background:var(--bg-lighter);">Admin</span>
+                </div>
+                <div style="padding:1rem; font-size:14px; display:flex; flex-direction:column; gap:8px;">
+                  <div style="display:flex; justify-content:space-between;"><span>Model Version:</span> <strong>RUL-Quantile-v1.2</strong></div>
+                  <div style="display:flex; justify-content:space-between;"><span>Data Drift:</span> <strong style="color:#4ade80">Low (2.4%)</strong></div>
+                  <div style="display:flex; justify-content:space-between;"><span>Prediction Accuracy (7d):</span> <strong>89.1%</strong></div>
+                  <div style="display:flex; justify-content:space-between;"><span>Avg Inference Time:</span> <strong>45ms</strong></div>
+                  <div style="display:flex; justify-content:space-between;"><span>Total Predictions:</span> <strong id="mh-total-preds">12,400</strong></div>
+                  <button class="btn-secondary" style="margin-top:8px;" onclick="toast('Model retrain job queued', 'success')">Trigger Retraining</button>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-header">
+                  <h3>Fleet Health Trend</h3>
+                </div>
+                <div class="chart-container"><canvas id="fleet-health-chart"></canvas></div>
+              </div>
+            </div>
+
+            <div class="disclaimer-footer">
+              ⚠ Prototype for training and demonstration using synthetic data. Not connected to operational defence systems.
+            </div>
+          </div>
+
+          <!-- AIRCRAFT LIST PAGE -->
+          <div id="page-aircraft" class="page">
+            <div class="page-header">
+              <h1>Aircraft Fleet</h1>
+              <div class="page-actions">
+                <select id="aircraft-status-filter" onchange="filterAircraft()" class="filter-select">
+                  <option value="">All Status</option>
+                  <option value="AVAILABLE">Available</option>
+                  <option value="MAINTENANCE">Maintenance</option>
+                  <option value="WARNING">Warning</option>
+                  <option value="CRITICAL">Critical</option>
+                </select>
+                <input type="text" id="aircraft-search-input" placeholder="Search aircraft..." 
+                       onkeyup="filterAircraft()" class="search-input" />
+              </div>
+            </div>
+            <div id="aircraft-grid" class="aircraft-grid">
+              <div class="loading">Loading aircraft...</div>
+            </div>
+          </div>
+
+          <!-- AIRCRAFT DETAIL PAGE -->
+          <div id="page-aircraft-detail" class="page">
+            <div class="page-header">
+              <button class="btn-back" onclick="navigate('aircraft')">← Back to Fleet</button>
+              <div class="aircraft-detail-title">
+                <h1 id="detail-aircraft-id">Aircraft</h1>
+                <span id="detail-aircraft-status" class="status-badge">LOADING</span>
+                <span id="detail-data-freshness" class="status-badge" style="background:rgba(255,255,255,0.1); color:#9ca3af; font-size:11px; margin-left:8px;">Sync: —</span>
+              </div>
+              <div class="page-actions">
+                <button class="btn-secondary" id="detail-predict-btn" onclick="runPrediction()">🤖 Run AI Prediction</button>
+                <button class="btn-primary" id="detail-maintenance-btn" onclick="openCreateMaintenanceModal()">+ Schedule Maintenance</button>
+              </div>
+            </div>
+
+            <div class="aircraft-detail-grid">
+              <!-- Health Scores -->
+              <div class="card aircraft-health-card">
+                <div class="card-header"><h3>Aircraft Health Overview</h3></div>
+                <div class="health-metrics">
+                  <div class="health-metric">
+                    <div class="metric-label">Health Score</div>
+                    <div class="metric-value" id="detail-health">—</div>
+                    <div class="progress-bar">
+                      <div class="progress-fill" id="detail-health-bar" style="width:0%"></div>
+                    </div>
+                  </div>
+                  <div class="health-metric">
+                    <div class="metric-label">Failure Risk</div>
+                    <div class="metric-value risk" id="detail-risk">—</div>
+                    <div class="progress-bar">
+                      <div class="progress-fill risk" id="detail-risk-bar" style="width:0%"></div>
+                    </div>
+                  </div>
+                  <div class="health-metric" style="position:relative;">
+                    <div class="metric-label">Remaining Useful Life</div>
+                    <div class="metric-value" id="detail-rul">—</div>
+                    <div class="progress-bar" style="position:relative;">
+                      <div class="progress-fill" id="detail-rul-bar" style="width:0%"></div>
+                      <div class="progress-range" id="detail-rul-range" style="position:absolute; background:rgba(255,255,255,0.4); height:100%; top:0; left:0; width:0%; pointer-events:none;"></div>
+                    </div>
+                    <div class="rul-note" style="margin-top:4px;" id="detail-rul-tooltip">Estimated from synthetic demonstration data</div>
+                    <div class="rul-note" id="detail-rul-warning" style="display:none; color:#f87171; font-weight:bold; margin-top:4px;">⚠️ HIGH UNCERTAINTY IN PREDICTION</div>
+                  </div>
+                </div>
+                <div id="detail-prediction-box" class="prediction-box hidden">
+                  <div class="prediction-header">
+                    <span>🤖 AI Prediction</span>
+                    <span class="prediction-badge" id="pred-risk-level">LOW</span>
+                  </div>
+                  <div class="contributing-factors" id="pred-factors"></div>
+                  <div class="prediction-disclaimer">Model indicates risk based on synthetic demonstration data.</div>
+                </div>
+              </div>
+
+              <!-- Digital Twin -->
+              <div class="card digital-twin-card">
+                <div class="card-header"><h3>Digital Twin — Component Health</h3></div>
+                <div class="digital-twin" id="digital-twin-display">
+                  <div class="loading">Loading components...</div>
+                </div>
+              </div>
+
+              <!-- Sensor Chart -->
+              <div class="card sensor-card">
+                <div class="card-header">
+                  <h3>Recent Sensor Readings</h3>
+                  <select id="sensor-selector" onchange="updateSensorChart()">
+                    <option value="engine_temperature">Engine Temperature</option>
+                    <option value="vibration">Vibration</option>
+                    <option value="oil_pressure">Oil Pressure</option>
+                    <option value="fuel_consumption">Fuel Consumption</option>
+                    <option value="hydraulic_pressure">Hydraulic Pressure</option>
+                  </select>
+                </div>
+                <div class="chart-container"><canvas id="detail-sensor-chart"></canvas></div>
+              </div>
+
+              <!-- What-If Scenario -->
+              <div class="card">
+                <div class="card-header"><h3>What-If Scenario Projection</h3></div>
+                <div style="padding: 16px;">
+                  <div style="display:flex; gap:16px; align-items:center; margin-bottom:16px;">
+                    <div>
+                      <label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:4px;">Extra Hours</label>
+                      <input type="range" id="whatif-hours" min="1" max="500" value="100" oninput="document.getElementById('whatif-hours-val').textContent = this.value + ' h'">
+                      <span id="whatif-hours-val" style="font-size:14px; margin-left:8px;">100 h</span>
+                    </div>
+                    <div>
+                      <label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:4px;">Flight Profile</label>
+                      <select id="whatif-profile">
+                        <option value="NORMAL">Normal</option>
+                        <option value="HIGH_STRESS">High Stress</option>
+                        <option value="LOW_STRESS">Low Stress</option>
+                      </select>
+                    </div>
+                    <button class="btn-primary" style="margin-top:auto;" onclick="runWhatIf()">Run Projection</button>
+                  </div>
+                  <div class="rul-note">Projection, not a prediction guarantee</div>
+                  <div id="whatif-results" style="display:none; margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+                    <div id="whatif-recommendation" style="font-weight:bold; margin-bottom:12px; font-size:16px; padding:10px; background:var(--bg-input); border-radius:6px;"></div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; font-size:14px;">
+                      <div><span style="color:var(--text-muted)">Warning at:</span> <span id="whatif-warning-hr"></span></div>
+                      <div><span style="color:var(--text-muted)">Critical at:</span> <span id="whatif-critical-hr"></span></div>
+                      <div><span style="color:var(--text-muted)">Likely failures:</span> <span id="whatif-components"></span></div>
+                      <div><span style="color:var(--text-muted)">Spares needed:</span> <span id="whatif-spares"></span></div>
+                    </div>
+                    <div class="chart-container"><canvas id="whatif-chart"></canvas></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Active Alerts -->
+              <div class="card">
+                <div class="card-header"><h3>Active Alerts</h3></div>
+                <div id="detail-alerts" class="alerts-list"></div>
+              </div>
+
+              <!-- Maintenance History -->
+              <div class="card">
+                <div class="card-header"><h3>Maintenance Records</h3></div>
+                <div id="detail-maintenance" class="maintenance-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- LIVE MONITORING PAGE -->
+          <div id="page-monitoring" class="page">
+            <div class="page-header">
+              <h1>Live Sensor Monitoring</h1>
+              <div class="page-actions">
+                <select id="monitor-aircraft-select" onchange="loadMonitoringForAircraft()">
+                  <option value="">Select Aircraft...</option>
+                </select>
+              </div>
+            </div>
+
+            <div id="monitoring-content">
+              <div class="empty-state">
+                <div class="empty-icon">📡</div>
+                <h3>Select an aircraft to view sensor data</h3>
+                <p>Live sensor readings will appear here</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI PREDICTIONS PAGE -->
+          <div id="page-predictions" class="page">
+            <div class="page-header">
+              <h1>AI Predictive Maintenance</h1>
+              <div class="page-actions">
+                <button class="btn-secondary" onclick="loadPredictions()">↻ Refresh</button>
+              </div>
+            </div>
+            <div class="disclaimer-banner">
+              <strong>⚠ ML Disclaimer:</strong> AI predictions are generated using synthetic demonstration data and are not validated for operational aircraft maintenance.
+            </div>
+            <div id="predictions-content">
+              <div class="loading">Loading predictions...</div>
+            </div>
+          </div>
+
+          <!-- MAINTENANCE PAGE -->
+          <div id="page-maintenance" class="page">
+            <div class="page-header">
+              <h1>Maintenance Management</h1>
+              <div class="page-actions">
+                <select id="maint-status-filter" onchange="loadMaintenance()" class="filter-select">
+                  <option value="">All Status</option>
+                  <option value="PLANNED">Planned</option>
+                  <option value="ACTIVE">Active</option>
+                  <option value="COMPLETED">Completed</option>
+                  <option value="CANCELLED">Cancelled</option>
+                </select>
+                <button class="btn-primary" id="create-maint-btn" onclick="openCreateMaintenanceModal()">+ Create Record</button>
+              </div>
+            </div>
+            <div id="maintenance-content">
+              <div class="loading">Loading maintenance records...</div>
+            </div>
+            <div class="card mt-4">
+              <div class="card-header"><h3>🤖 Maintenance Priority Recommendations</h3>
+                <span class="card-badge">AI-Driven</span></div>
+              <div class="disclaimer-inline">Prototype maintenance planning recommendation — not an operational military schedule.</div>
+              <div id="maintenance-recommendations">
+                <div class="loading">Loading recommendations...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SPARE PARTS PAGE -->
+          <div id="page-spares" class="page">
+            <div class="page-header">
+              <h1>Spare Parts Management</h1>
+              <div class="page-actions">
+                <select id="spare-status-filter" onchange="loadSpares()" class="filter-select">
+                  <option value="">All Status</option>
+                  <option value="NORMAL">Normal</option>
+                  <option value="LOW">Low Stock</option>
+                  <option value="CRITICAL">Critical</option>
+                  <option value="OUT_OF_STOCK">Out of Stock</option>
+                </select>
+              </div>
+            </div>
+            <div id="shortage-predictions-banner" class="shortage-banner hidden"></div>
+            <div id="spares-content">
+              <div class="loading">Loading spare parts...</div>
+            </div>
+          </div>
+
+          <!-- FLEET AVAILABILITY PAGE -->
+          <div id="page-fleet" class="page">
+            <div class="page-header">
+              <h1>Fleet Availability</h1>
+            </div>
+            <div class="disclaimer-banner">
+              <strong>⚠ Prototype simulation</strong> — not operational fleet availability data.
+            </div>
+            <div id="fleet-content">
+              <div class="loading">Loading fleet data...</div>
+            </div>
+          </div>
+
+          <!-- ALERTS PAGE -->
+          <div id="page-alerts" class="page">
+            <div class="page-header">
+              <h1>Alert Management</h1>
+              <div class="page-actions">
+                <select id="alert-status-filter" onchange="loadAlerts()" class="filter-select">
+                  <option value="ACTIVE">Active</option>
+                  <option value="">All</option>
+                  <option value="ACKNOWLEDGED">Acknowledged</option>
+                  <option value="RESOLVED">Resolved</option>
+                </select>
+              </div>
+            </div>
+            <div id="alerts-content">
+              <div class="loading">Loading alerts...</div>
+            </div>
+          </div>
+
+          <!-- REPORTS PAGE -->
+          <div id="page-reports" class="page">
+            <div class="page-header">
+              <h1>Reports</h1>
+            </div>
+            <div class="reports-grid">
+              <div class="card report-card" onclick="generateReport('fleet-health')">
+                <div class="report-icon">📊</div>
+                <h3>Fleet Health Report</h3>
+                <p>Complete health status and risk assessment for all aircraft</p>
+                <div class="report-actions">
+                  <button class="btn-sm" onclick="event.stopPropagation(); generateReport('fleet-health', 'json')">JSON</button>
+                  <button class="btn-sm" onclick="event.stopPropagation(); generateReport('fleet-health', 'csv')">CSV</button>
+                </div>
+              </div>
+              <div class="card report-card" onclick="generateReport('maintenance-summary')">
+                <div class="report-icon">🔧</div>
+                <h3>Maintenance Summary</h3>
+                <p>All maintenance records, status, and completion statistics</p>
+                <div class="report-actions">
+                  <button class="btn-sm" onclick="event.stopPropagation(); generateReport('maintenance-summary', 'json')">JSON</button>
+                </div>
+              </div>
+              <div class="card report-card" onclick="generateReport('spare-parts')">
+                <div class="report-icon">📦</div>
+                <h3>Spare Parts Inventory</h3>
+                <p>Current inventory levels, shortages, and procurement recommendations</p>
+                <div class="report-actions">
+                  <button class="btn-sm" onclick="event.stopPropagation(); generateReport('spare-parts', 'json')">JSON</button>
+                </div>
+              </div>
+            </div>
+            <div id="report-output" class="report-output hidden">
+              <div class="card">
+                <div class="card-header">
+                  <h3 id="report-title">Report</h3>
+                  <button class="btn-sm" onclick="document.getElementById('report-output').classList.add('hidden')">Close</button>
+                </div>
+                <div id="report-content" class="report-content"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AUDIT & SECURITY PAGE -->
+          <div id="page-audit" class="page">
+            <div class="page-header">
+              <h1>Security & Audit Log</h1>
+              <div class="page-actions">
+                <input type="text" id="audit-search" placeholder="Search by action or user..." 
+                       onkeyup="loadAuditLogs()" class="search-input" />
+                <button class="btn-secondary" onclick="loadAuditLogs()">↻ Refresh</button>
+              </div>
+            </div>
+            <div id="audit-content">
+              <div class="loading">Loading audit logs...</div>
+            </div>
+          </div>
+
+          <!-- DEMO MODE PAGE -->
+          <div id="page-demo" class="page">
+            <div class="page-header">
+              <h1>Demo Mode — Scenario Control</h1>
+              <p class="page-subtitle">Simulated sensor degradation for demonstration purposes</p>
+            </div>
+
+            <div class="demo-layout">
+              <!-- Controls -->
+              <div class="demo-controls">
+                <div class="card">
+                  <div class="card-header"><h3>Aircraft Selection</h3></div>
+                  <select id="demo-aircraft-select" class="demo-select" onchange="updateDemoAircraft()">
+                    <option value="DEMO-A103">DEMO-A103 (Primary Demo)</option>
+                  </select>
+                </div>
+
+                <div class="card">
+                  <div class="card-header"><h3>Scenario Controls</h3></div>
+                  <div class="demo-buttons">
+                    <button class="demo-btn normal" onclick="startDemo('normal')">
+                      <span>🟢</span> Start Normal Operation
+                    </button>
+                    <button class="demo-btn warning" onclick="startDemo('engine_anomaly')">
+                      <span>⚠</span> Introduce Engine Anomaly
+                    </button>
+                    <button class="demo-btn danger" onclick="startDemo('hydraulic_anomaly')">
+                      <span>🔴</span> Hydraulic Pressure Drop
+                    </button>
+                    <button class="demo-btn critical" onclick="startDemo('complete_failure')">
+                      <span>💀</span> Simulate Critical Failure
+                    </button>
+                    <hr class="demo-divider"/>
+                    <button class="demo-btn advance" onclick="advanceStep()" id="advance-step-btn" disabled>
+                      ⏭ Advance One Step
+                    </button>
+                    <button class="demo-btn auto" onclick="toggleAutoRun()" id="auto-run-btn" disabled>
+                      ▶ Auto Run Demo
+                    </button>
+                    <button class="demo-btn run-complete btn-primary-full" onclick="runCompleteDemo()">
+                      🚀 RUN COMPLETE DEMO
+                    </button>
+                    <button class="demo-btn reset" onclick="resetDemo()">
+                      ↺ Reset to Healthy State
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Live Visualization -->
+              <div class="demo-visualization">
+                <div class="card">
+                  <div class="card-header">
+                    <h3>Live Sensor Readings</h3>
+                    <div id="demo-step-indicator" class="step-indicator">Step: 0</div>
+                  </div>
+                  <div class="sensor-gauges" id="sensor-gauges">
+                    <div class="gauge-card" id="gauge-temp">
+                      <div class="gauge-label">🌡 Engine Temp</div>
+                      <div class="gauge-value" id="gauge-temp-val">75.0 °C</div>
+                      <div class="gauge-bar"><div class="gauge-fill" id="gauge-temp-bar" style="width:30%"></div></div>
+                      <div class="gauge-range">Normal: 65–85°C</div>
+                    </div>
+                    <div class="gauge-card" id="gauge-vib">
+                      <div class="gauge-label">〰 Vibration</div>
+                      <div class="gauge-value" id="gauge-vib-val">2.0 mm/s</div>
+                      <div class="gauge-bar"><div class="gauge-fill" id="gauge-vib-bar" style="width:20%"></div></div>
+                      <div class="gauge-range">Normal: 1.5–2.5 mm/s</div>
+                    </div>
+                    <div class="gauge-card" id="gauge-oil">
+                      <div class="gauge-label">🛢 Oil Pressure</div>
+                      <div class="gauge-value" id="gauge-oil-val">47.0 PSI</div>
+                      <div class="gauge-bar"><div class="gauge-fill" id="gauge-oil-bar" style="width:60%"></div></div>
+                      <div class="gauge-range">Normal: 40–55 PSI</div>
+                    </div>
+                    <div class="gauge-card" id="gauge-fuel">
+                      <div class="gauge-label">⛽ Fuel Consumption</div>
+                      <div class="gauge-value" id="gauge-fuel-val">240 L/hr</div>
+                      <div class="gauge-bar"><div class="gauge-fill" id="gauge-fuel-bar" style="width:40%"></div></div>
+                      <div class="gauge-range">Normal: 200–280 L/hr</div>
+                    </div>
+                    <div class="gauge-card" id="gauge-hyd">
+                      <div class="gauge-label">💧 Hydraulic Pressure</div>
+                      <div class="gauge-value" id="gauge-hyd-val">3000 PSI</div>
+                      <div class="gauge-bar"><div class="gauge-fill" id="gauge-hyd-bar" style="width:70%"></div></div>
+                      <div class="gauge-range">Normal: 2900–3100 PSI</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="card-header">
+                    <h3>AI Prediction Status</h3>
+                    <span class="prediction-badge" id="demo-risk-badge">UNKNOWN</span>
+                  </div>
+                  <div class="demo-prediction-display">
+                    <div class="pred-metric">
+                      <span class="pred-label">Failure Risk</span>
+                      <span class="pred-value" id="demo-failure-risk">—%</span>
+                    </div>
+                    <div class="pred-metric">
+                      <span class="pred-label">Health Score</span>
+                      <span class="pred-value" id="demo-health-score">—%</span>
+                    </div>
+                    <div class="pred-metric">
+                      <span class="pred-label">Remaining Useful Life</span>
+                      <span class="pred-value" id="demo-rul">— hrs</span>
+                    </div>
+                    <div class="pred-metric">
+                      <span class="pred-label">Anomaly Score</span>
+                      <span class="pred-value" id="demo-anomaly">—</span>
+                    </div>
+                  </div>
+                  <div id="demo-factors-list" class="factors-list"></div>
+                </div>
+
+                <div class="card">
+                  <div class="card-header"><h3>Demo Timeline</h3></div>
+                  <div id="demo-timeline" class="timeline"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sensor History Chart -->
+            <div class="card mt-4">
+              <div class="card-header"><h3>Sensor Trend (Demo)</h3></div>
+              <div class="chart-container-tall"><canvas id="demo-sensor-chart"></canvas></div>
+            </div>
+          </div>
+
+          <!-- MFA SETUP MODAL -->
+          <div id="mfa-setup-modal" class="modal hidden">
+            <div class="modal-backdrop" onclick="closeMFAModal()"></div>
+            <div class="modal-content">
+              <div class="modal-header">
+                <h2>🔐 Setup Multi-Factor Authentication</h2>
+                <button onclick="closeMFAModal()">✕</button>
+              </div>
+              <div class="modal-body">
+                <p class="mfa-instruction">Scan the QR code with your authenticator app (Google Authenticator, Authy, etc.)</p>
+                <div id="mfa-qr-container" class="qr-container"></div>
+                <div class="mfa-secret-display" id="mfa-secret-text"></div>
+                <div class="form-group">
+                  <label>Verify Setup — Enter the 6-digit code from your app</label>
+                  <input type="text" id="mfa-confirm-code" placeholder="000000" maxlength="6" class="otp-input" />
+                </div>
+                <div id="mfa-recovery-codes" class="recovery-codes hidden">
+                  <strong>Recovery Codes (save these securely):</strong>
+                  <div id="recovery-list"></div>
+                </div>
+                <button class="btn-primary btn-full" onclick="confirmMFASetup()">Confirm & Enable MFA</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- CREATE MAINTENANCE MODAL -->
+          <div id="create-maintenance-modal" class="modal hidden">
+            <div class="modal-backdrop" onclick="closeCreateMaintenanceModal()"></div>
+            <div class="modal-content">
+              <div class="modal-header">
+                <h2>🔧 Schedule Maintenance</h2>
+                <button onclick="closeCreateMaintenanceModal()">✕</button>
+              </div>
+              <div class="modal-body">
+                <div id="create-maint-error" class="error-banner hidden"></div>
+                <div class="form-group">
+                  <label>Aircraft</label>
+                  <select id="maint-aircraft-id" class="form-select"></select>
+                </div>
+                <div class="form-group">
+                  <label>Title</label>
+                  <input type="text" id="maint-title" placeholder="Engine inspection..." />
+                </div>
+                <div class="form-group">
+                  <label>Description</label>
+                  <textarea id="maint-description" rows="3" placeholder="Detailed description..."></textarea>
+                </div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>Priority</label>
+                    <select id="maint-priority" class="form-select">
+                      <option value="LOW">Low</option>
+                      <option value="MEDIUM" selected>Medium</option>
+                      <option value="HIGH">High</option>
+                      <option value="CRITICAL">Critical</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>Duration (hours)</label>
+                    <input type="number" id="maint-duration" value="4" min="0.5" step="0.5" />
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label>Scheduled Start</label>
+                  <input type="datetime-local" id="maint-start" />
+                </div>
+                <div class="form-group">
+                  <label>Assigned To</label>
+                  <input type="text" id="maint-assigned" placeholder="Technician name..." />
+                </div>
+                <div class="form-group">
+                  <label>Notes</label>
+                  <textarea id="maint-notes" rows="2" placeholder="Additional notes..."></textarea>
+                </div>
+                <button class="btn-primary btn-full" onclick="submitCreateMaintenance()">Schedule Maintenance</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- STOCK UPDATE MODAL -->
+          <div id="stock-modal" class="modal hidden">
+            <div class="modal-backdrop" onclick="closeStockModal()"></div>
+            <div class="modal-content modal-sm">
+              <div class="modal-header">
+                <h2>📦 Update Stock</h2>
+                <button onclick="closeStockModal()">✕</button>
+              </div>
+              <div class="modal-body">
+                <div id="stock-modal-info" class="stock-part-info"></div>
+                <div class="form-group">
+                  <label>Action</label>
+                  <select id="stock-action" class="form-select">
+                    <option value="ADD">Add Stock</option>
+                    <option value="REMOVE">Remove Stock</option>
+                    <option value="RESERVE">Reserve Stock</option>
+                    <option value="RELEASE">Release Reserved</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Quantity</label>
+                  <input type="number" id="stock-quantity" value="1" min="1" />
+                </div>
+                <div class="form-group">
+                  <label>Notes</label>
+                  <input type="text" id="stock-notes" placeholder="Reason for change..." />
+                </div>
+                <button class="btn-primary btn-full" onclick="submitStockUpdate()">Update Stock</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- PHASE 4: PICTURE VIEW (MAP) -->
+          <div id="page-picture" class="page">
+            <div class="page-header">
+              <h1>Common Operating Picture (PICTURE)</h1>
+              <p class="page-subtitle">Map-centric view of airbases, airspace zones, threats, and active missions.</p>
+            </div>
+            <div class="dashboard-grid">
+              <div class="card" style="grid-column: span 2;">
+                <div class="card-header">
+                  <h3>Tactical Map</h3>
+                  <span class="card-badge">Live</span>
+                </div>
+                <div class="chart-container" style="display: flex; align-items: center; justify-content: center; background: #0f172a; border-radius: 8px; min-height: 400px; padding: 0;">
+                  <div id="tactical-map" style="width: 100%; height: 100%; min-height: 400px; border-radius: 8px; z-index: 1;"></div>
+                </div>
+              </div>
+              <div class="card">
+                <div class="card-header">
+                  <h3>Active Threats & Events</h3>
+                  <button class="btn-sm" onclick="fetchEvents()">Refresh</button>
+                </div>
+                <div id="cop-events-list" class="risk-list">
+                  <div class="loading">Loading...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- PHASE 4: PLAN VIEW (MISSION/GANTT) -->
+          <div id="page-plan" class="page">
+            <div class="page-header">
+              <h1>Mission Planning (PLAN)</h1>
+              <p class="page-subtitle">Dynamic retasking, optimization, and plan comparison.</p>
+              <div class="header-actions">
+                <button class="btn-primary" onclick="generatePlans()">⟳ Run Optimizer</button>
+              </div>
+            </div>
+            <div class="dashboard-grid">
+              <div class="card" style="grid-column: span 3;">
+                <div class="card-header">
+                  <h3>Generated Plans</h3>
+                  <button class="btn-sm" onclick="fetchPlans()">Refresh</button>
+                </div>
+                <div class="table-responsive">
+                  <table class="data-table" id="plans-table">
+                    <thead>
+                      <tr>
+                        <th>Version</th>
+                        <th>Status</th>
+                        <th>Coverage</th>
+                        <th>Risk Score</th>
+                        <th>Summary</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr><td colspan="6" class="text-center">Loading plans...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            
+            <div class="dashboard-grid">
+              <div class="card" style="grid-column: span 3;">
+                <div class="card-header">
+                  <h3>Inject Event (Trigger Retask)</h3>
+                </div>
+                <div style="padding: 1rem; display: flex; gap: 1rem; align-items: center;">
+                  <select id="event-type-select" class="form-select" style="max-width: 250px;">
+                    <option value="AIRCRAFT_UNSERVICEABLE">Aircraft Unserviceable</option>
+                    <option value="NEW_THREAT">New Threat</option>
+                    <option value="WEATHER_CLOSURE">Weather Closure</option>
+                    <option value="NEW_PRIORITY_MISSION">New Priority Mission</option>
+                  </select>
+                  <button class="btn-primary" onclick="injectEvent()">Inject Selected Event</button>
+                </div>
+                <div id="event-result-diff" style="padding: 1rem;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- PHASE 4: READINESS VIEW (FLEET/CREW/SPARES) -->
+          <div id="page-readiness" class="page">
+            <div class="page-header">
+              <h1>Force Readiness (READINESS)</h1>
+              <p class="page-subtitle">Aggregated status of fleet, crew, and weapon spares.</p>
+            </div>
+            <div class="stats-grid" id="readiness-stats">
+              <div class="stat-card total">
+                <div class="stat-icon">✈</div>
+                <div class="stat-value" id="stat-readiness-aircraft">—</div>
+                <div class="stat-label">Mission Capable Aircraft</div>
+              </div>
+              <div class="stat-card available">
+                <div class="stat-icon">👨‍✈️</div>
+                <div class="stat-value" id="stat-readiness-crew">—</div>
+                <div class="stat-label">Available Crew</div>
+              </div>
+              <div class="stat-card warning">
+                <div class="stat-icon">💣</div>
+                <div class="stat-value" id="stat-readiness-weapons">—</div>
+                <div class="stat-label">Weapon Stock Status</div>
+              </div>
+            </div>
+            <div class="dashboard-grid">
+              <div class="card" style="grid-column: span 3;">
+                 <div class="card-header">
+                   <h3>Operational Readiness Dashboard</h3>
+                 </div>
+                 <div style="padding: 1rem; text-align: center; color: #94a3b8;">
+                   Integrated readiness metrics will be populated here.
+                 </div>
+              </div>
+              
+              <div class="card" style="grid-column: span 3; margin-top: 20px;">
+                 <div class="card-header">
+                   <h3>Crew Fatigue Status</h3>
+                   <button class="btn-secondary" onclick="loadCrewFatigue()">↻ Refresh</button>
+                 </div>
+                 <div class="table-responsive">
+                   <table class="data-table">
+                     <thead>
+                       <tr>
+                         <th>Crew Name</th>
+                         <th>Role</th>
+                         <th>Score</th>
+                         <th>Status</th>
+                         <th>Factors</th>
+                         <th>Action</th>
+                       </tr>
+                     </thead>
+                     <tbody id="crew-fatigue-table">
+                       <tr><td colspan="6" class="text-center">Click Refresh to load</td></tr>
+                     </tbody>
+                   </table>
+                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- NOTIFICATION TOAST -->
+          <div id="toast-container" class="toast-container"></div>
+
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
