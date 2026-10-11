@@ -56,7 +56,7 @@ async function autoAuthenticate() {
   return false;
 }
 
-// ── API Helper ─────────────────────────────────────────────────────────────
+// ── API Helper & Universal Wrappers ───────────────────────────────────────
 async function api(method, path, body = null, raw = false) {
   if (!state.accessToken && !path.includes('/auth/login')) {
     await autoAuthenticate();
@@ -70,13 +70,24 @@ async function api(method, path, body = null, raw = false) {
   };
   if (body) opts.body = JSON.stringify(body);
 
+  // Normalize path to prevent duplicate '/api' prefix
+  let cleanPath = path;
+  if (cleanPath.startsWith('/api/')) {
+    cleanPath = cleanPath.substring(4);
+  } else if (cleanPath === '/api') {
+    cleanPath = '';
+  }
+  if (!cleanPath.startsWith('/') && cleanPath !== '') {
+    cleanPath = '/' + cleanPath;
+  }
+
   try {
-    let res = await fetch(`${API}${path}`, opts);
-    if (res.status === 401 && !path.includes('/auth/login')) {
+    let res = await fetch(`${API}${cleanPath}`, opts);
+    if (res.status === 401 && !cleanPath.includes('/auth/login')) {
       const authed = await autoAuthenticate();
       if (authed) {
         opts.headers.Authorization = `Bearer ${state.accessToken}`;
-        res = await fetch(`${API}${path}`, opts);
+        res = await fetch(`${API}${cleanPath}`, opts);
       }
     }
     if (raw) return res;
@@ -89,6 +100,40 @@ async function api(method, path, body = null, raw = false) {
     if (e.name === 'TypeError') throw new Error('Cannot connect to server. Is the backend running?');
     throw e;
   }
+}
+
+// Universal wrapper for apiCall(...)
+async function apiCall(path, methodOrOpts = 'GET', body = null) {
+  let method = 'GET';
+  let requestBody = null;
+
+  if (typeof methodOrOpts === 'string') {
+    method = methodOrOpts.toUpperCase();
+    requestBody = body;
+  } else if (typeof methodOrOpts === 'object' && methodOrOpts !== null) {
+    method = (methodOrOpts.method || 'GET').toUpperCase();
+    requestBody = methodOrOpts.body;
+  }
+
+  if (typeof requestBody === 'string') {
+    try {
+      requestBody = JSON.parse(requestBody);
+    } catch (e) {}
+  }
+
+  return await api(method, path, requestBody);
+}
+
+// Universal wrapper for apiFetch(...)
+async function apiFetch(path, options = {}) {
+  const method = (options.method || 'GET').toUpperCase();
+  let body = options.body;
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body);
+    } catch (e) {}
+  }
+  return await api(method, path, body);
 }
 
 async function tryRefresh() {
@@ -131,8 +176,15 @@ function toast(msg, type = 'info') {
   const el = document.createElement('div');
   el.className = `toast ${type}`;
   el.innerHTML = `<span>${icons[type]}</span><span>${msg}</span>`;
-  document.getElementById('toast-container').appendChild(el);
-  setTimeout(() => el.remove(), 4000);
+  const container = document.getElementById('toast-container');
+  if (container) {
+    container.appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+  }
+}
+
+function showToast(msg, type = 'info') {
+  toast(msg, type);
 }
 
 
@@ -2013,10 +2065,12 @@ async function fetchPlans() {
 }
 
 async function generatePlans() {
-  const btn = event.currentTarget;
-  const originalHtml = btn.innerHTML;
-  btn.innerHTML = '⟳ Running PuLP Solver...';
-  btn.disabled = true;
+  const btn = (typeof event !== 'undefined' && event && event.currentTarget) ? event.currentTarget : document.querySelector('button[onclick="generatePlans()"]');
+  const originalHtml = btn ? btn.innerHTML : 'Run Optimizer';
+  if (btn) {
+    btn.innerHTML = '⟳ Running PuLP Solver...';
+    btn.disabled = true;
+  }
   try {
     await apiFetch('/api/planning/generate', {
       method: 'POST',
@@ -2024,11 +2078,14 @@ async function generatePlans() {
     });
     showToast('Multi-objective plans generated successfully.', 'success');
     await fetchPlans();
+    if (typeof fetchGanttData === 'function') fetchGanttData();
   } catch (err) {
     showToast(`Failed to generate plans: ${err.message}`, 'error');
   } finally {
-    btn.innerHTML = originalHtml;
-    btn.disabled = false;
+    if (btn) {
+      btn.innerHTML = originalHtml;
+      btn.disabled = false;
+    }
   }
 }
 
