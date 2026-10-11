@@ -1543,12 +1543,27 @@ async function loadAuditLogs() {
 // ── Demo Mode ──────────────────────────────────────────────────────────────
 let demoChartInstance = null;
 
-function initDemoPage() {
+async function initDemoPage() {
   const sel = document.getElementById('demo-aircraft-select');
-  if (state.allAircraft.length > 0 && sel.options.length <= 1) {
-    sel.innerHTML = state.allAircraft.map(a =>
-      `<option value="${a.id}" ${a.id === state.allAircraft[0].id ? 'selected' : ''}>${a.id}</option>`
-    ).join('');
+  if (!state.allAircraft || state.allAircraft.length === 0) {
+    try {
+      const data = await api('GET', '/aircraft?limit=100');
+      if (data && data.aircraft) {
+        state.allAircraft = data.aircraft;
+      }
+    } catch (e) {
+      console.warn('Could not fetch aircraft for demo:', e);
+    }
+  }
+
+  if (sel) {
+    if (state.allAircraft && state.allAircraft.length > 0) {
+      sel.innerHTML = state.allAircraft.map(a =>
+        `<option value="${a.id}" ${a.id === 'DEMO-A001' ? 'selected' : ''}>${a.id} — ${a.model || 'Aircraft'}</option>`
+      ).join('');
+    } else {
+      sel.innerHTML = '<option value="DEMO-A001" selected>DEMO-A001</option>';
+    }
   }
 
   updateDemoAircraft();
