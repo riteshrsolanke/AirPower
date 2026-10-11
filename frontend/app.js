@@ -135,79 +135,7 @@ function toast(msg, type = 'info') {
   setTimeout(() => el.remove(), 4000);
 }
 
-// ── Auth Flow ──────────────────────────────────────────────────────────────
-function showLoginStep() {
-  document.getElementById('login-step').classList.add('active');
-  document.getElementById('mfa-step').classList.remove('active');
-}
 
-function showMFAStep() {
-  document.getElementById('login-step').classList.remove('active');
-  document.getElementById('mfa-step').classList.add('active');
-  document.getElementById('mfa-code').focus();
-}
-
-function togglePassword(id) {
-  const el = document.getElementById(id);
-  el.type = el.type === 'password' ? 'text' : 'password';
-}
-
-async function doLogin() {
-  const username = document.getElementById('login-username').value.trim();
-  const password = document.getElementById('login-password').value;
-  const errEl = document.getElementById('login-error');
-  const btn = document.getElementById('login-btn');
-
-  if (!username || !password) {
-    errEl.textContent = 'Please enter username and password.';
-    errEl.classList.remove('hidden');
-    return;
-  }
-
-  errEl.classList.add('hidden');
-  btn.disabled = true;
-  btn.querySelector('.btn-text').textContent = 'Signing in…';
-
-  try {
-    const data = await api('POST', '/auth/login', { username, password });
-    if (data.requires_mfa) {
-      state.tempToken = data.temp_token;
-      showMFAStep();
-    } else {
-      setTokens(data.access_token, data.refresh_token, data.user);
-      showApp();
-    }
-  } catch (e) {
-    errEl.textContent = e.message || 'Login failed. Check credentials.';
-    errEl.classList.remove('hidden');
-  } finally {
-    btn.disabled = false;
-    btn.querySelector('.btn-text').textContent = 'Sign In';
-  }
-}
-
-async function doMFAVerify() {
-  const code = document.getElementById('mfa-code').value.trim();
-  const errEl = document.getElementById('mfa-error');
-
-  if (!code || code.length !== 6) {
-    errEl.textContent = 'Enter a 6-digit code.';
-    errEl.classList.remove('hidden');
-    return;
-  }
-
-  errEl.classList.add('hidden');
-
-  try {
-    const data = await api('POST', '/auth/mfa/verify', { temp_token: state.tempToken, code });
-    setTokens(data.access_token, data.refresh_token, data.user);
-    showApp();
-  } catch (e) {
-    errEl.textContent = e.message || 'Invalid MFA code.';
-    errEl.classList.remove('hidden');
-    document.getElementById('mfa-code').value = '';
-  }
-}
 
 async function doLogout() {
   clearTokens();
@@ -2672,44 +2600,7 @@ async function fetchReadiness() {
   }
 }
 
-// ── MFA Demo Helpers ────────────────────────────────────────────────────────
-let demoCurrentTOTP = null;
 
-async function showLoginMFAQr() {
-  const box = document.getElementById('login-mfa-qr-box');
-  const imgDiv = document.getElementById('login-mfa-qr-img');
-  const textDiv = document.getElementById('login-mfa-secret-text');
-  if (!state.tempToken) {
-    showToast('No active login session.', 'warning');
-    return;
-  }
-  try {
-    const res = await apiFetch('/api/auth/mfa/setup-info', {
-      method: 'POST',
-      body: JSON.stringify({ temp_token: state.tempToken })
-    });
-    imgDiv.innerHTML = `<img src="${res.qr_code}" alt="TOTP QR Code" style="width:160px; height:160px; border-radius:4px;" />`;
-    textDiv.textContent = `Secret Key: ${res.secret}`;
-    demoCurrentTOTP = res.demo_current_code;
-    box.classList.remove('hidden');
-  } catch (e) {
-    showToast(`Failed to load MFA QR: ${e.message}`, 'error');
-  }
-}
-
-function autoFillDemoTOTP() {
-  if (demoCurrentTOTP) {
-    document.getElementById('mfa-code').value = demoCurrentTOTP;
-    doMFAVerify();
-  } else {
-    showLoginMFAQr().then(() => {
-      if (demoCurrentTOTP) {
-        document.getElementById('mfa-code').value = demoCurrentTOTP;
-        doMFAVerify();
-      }
-    });
-  }
-}
 
 // Intercept navigate function to trigger data fetches for new pages
 const originalNavigate = navigate;

@@ -15,7 +15,10 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
-  <link rel="stylesheet" href="styles.css" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="stylesheet" href="styles.css?v=3.0" />
 </head>
 <body>
   <div id="app">
@@ -677,30 +680,7 @@
             </div>
           </div>
 
-          <!-- MFA SETUP MODAL -->
-          <div id="mfa-setup-modal" class="modal hidden">
-            <div class="modal-backdrop" onclick="closeMFAModal()"></div>
-            <div class="modal-content">
-              <div class="modal-header">
-                <h2>🔐 Setup Multi-Factor Authentication</h2>
-                <button onclick="closeMFAModal()">✕</button>
-              </div>
-              <div class="modal-body">
-                <p class="mfa-instruction">Scan the QR code with your authenticator app (Google Authenticator, Authy, etc.)</p>
-                <div id="mfa-qr-container" class="qr-container"></div>
-                <div class="mfa-secret-display" id="mfa-secret-text"></div>
-                <div class="form-group">
-                  <label>Verify Setup — Enter the 6-digit code from your app</label>
-                  <input type="text" id="mfa-confirm-code" placeholder="000000" maxlength="6" class="otp-input" />
-                </div>
-                <div id="mfa-recovery-codes" class="recovery-codes hidden">
-                  <strong>Recovery Codes (save these securely):</strong>
-                  <div id="recovery-list"></div>
-                </div>
-                <button class="btn-primary btn-full" onclick="confirmMFASetup()">Confirm & Enable MFA</button>
-              </div>
-            </div>
-          </div>
+
 
           <!-- CREATE MAINTENANCE MODAL -->
           <div id="create-maintenance-modal" class="modal hidden">
@@ -1141,6 +1121,6 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=3.0"></script>
 </body>
 </html>
