@@ -6,7 +6,7 @@ client = TestClient(app)
 
 @pytest.fixture(scope="module")
 def admin_token():
-    res = client.post("/api/auth/login", json={"username": "admin", "password": "Admin@Demo2026!"})
+    res = client.post("/api/auth/login", json={"username": "admin", "password": "123"})
     data = res.json()
     if data.get("requires_mfa"):
         from backend.app.db.database import get_db
@@ -21,12 +21,12 @@ def admin_token():
 
 @pytest.fixture(scope="module")
 def analyst_token():
-    res = client.post("/api/auth/login", json={"username": "analyst", "password": "Analyst@Demo2026!"})
+    res = client.post("/api/auth/login", json={"username": "analyst", "password": "123"})
     return res.json()["access_token"]
 
 @pytest.fixture(scope="module")
 def viewer_token():
-    res = client.post("/api/auth/login", json={"username": "viewer", "password": "Viewer@Demo2026!"})
+    res = client.post("/api/auth/login", json={"username": "viewer", "password": "123"})
     return res.json()["access_token"]
 
 

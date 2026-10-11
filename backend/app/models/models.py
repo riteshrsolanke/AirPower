@@ -680,6 +680,12 @@ class MissionPlan(Base):
     rejector = relationship("User", foreign_keys=[rejected_by])
     trigger_event = relationship("EventLog", foreign_keys=[trigger_event_id])
 
+    @property
+    def plan_type(self) -> str:
+        if self.resource_use and isinstance(self.resource_use, dict):
+            return self.resource_use.get("plan_type", "MAX_COVERAGE")
+        return "MAX_COVERAGE"
+
 
 class PlanAssignment(Base):
     """One aircraft+crew+weapon assignment within a MissionPlan."""

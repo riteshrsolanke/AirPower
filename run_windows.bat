@@ -1,27 +1,41 @@
 @echo off
 echo ========================================================
-echo Air Power - Dynamic Air Operations & Resource Optimisation
-echo Problem Statement 26250 | SIH 2026
+echo Starting Air Power Resource Optimisation (PS 26250)
 echo ========================================================
-echo.
 
-echo [1/3] Starting FastAPI Backend on port 8000...
-start "Backend (FastAPI)" cmd /c "python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload"
+:: Go to script directory (root)
+cd /d "%~dp0"
 
-echo [2/3] Starting Frontend Server on port 8080...
-start "Frontend (HTTP)" cmd /c "python -m http.server 8080 --directory frontend"
+:: Set encoding and pythonpath to fix emoji errors and module imports
+set PYTHONIOENCODING=utf-8
+set PYTHONPATH=.
 
-echo [3/3] Waiting for servers to initialize...
-timeout /t 3 /nobreak > nul
+echo [1/3] Setting up backend...
+if not exist "venv" (
+    echo Creating virtual environment...
+    python -m venv venv
+)
+call venv\Scripts\activate
+echo Installing requirements...
+pip install -r requirements.txt > nul
+echo Seeding database...
+python seed_database.py
 
-echo Opening dashboard in your default browser...
+echo Starting backend server on port 8000...
+start cmd /k "title Backend Server && cd /d "%~dp0" && set PYTHONPATH=. && call venv\Scripts\activate && uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
+
+echo [2/3] Starting frontend server on port 8080...
+start cmd /k "title Frontend Server && cd /d "%~dp0" && cd frontend && python -m http.server 8080"
+
+echo [3/3] Opening application in browser...
+timeout /t 3 > nul
 start http://localhost:8080
 
 echo.
-echo Press any key to terminate both servers and exit...
-pause > nul
-
-taskkill /fi "windowtitle eq Backend (FastAPI)" > nul 2>&1
-taskkill /fi "windowtitle eq Frontend (HTTP)" > nul 2>&1
-echo Services stopped.
-exit
+echo Application is running!
+echo - Frontend: http://localhost:8080
+echo - Backend API: http://localhost:8000
+echo.
+echo Keep the other two terminal windows open to keep the servers running.
+echo To stop, close those terminal windows.
+pause

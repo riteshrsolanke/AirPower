@@ -24,26 +24,15 @@ client = TestClient(app)
 
 
 def test_full_ps26250_e2e_demonstration():
-    # ── STEP 1: LOGIN (admin + TOTP) ───────────────────────────────────────────
-    res_login = client.post("/api/auth/login", json={"username": "admin", "password": "Admin@Demo2026!"})
+    # ── STEP 1: LOGIN (admin direct login without MFA) ─────────────────────────
+    res_login = client.post("/api/auth/login", json={"username": "admin", "password": "123"})
     assert res_login.status_code == 200
     login_data = res_login.json()
-    assert login_data["requires_mfa"] is True
-    temp_token = login_data["temp_token"]
-
-    # Fetch TOTP secret
-    db = next(get_db())
-    admin_user = db.query(User).filter(User.username == "admin").first()
-    totp = pyotp.TOTP(admin_user.mfa_secret)
-    code = totp.now()
-
-    res_mfa = client.post("/api/auth/mfa/verify", json={"temp_token": temp_token, "code": code})
-    assert res_mfa.status_code == 200
-    admin_token = res_mfa.json()["access_token"]
+    admin_token = login_data.get("access_token")
     assert admin_token is not None
 
     # Login analyst for four-eyes approval
-    res_analyst = client.post("/api/auth/login", json={"username": "analyst", "password": "Analyst@Demo2026!"})
+    res_analyst = client.post("/api/auth/login", json={"username": "analyst", "password": "123"})
     assert res_analyst.status_code == 200
     analyst_token = res_analyst.json()["access_token"]
 

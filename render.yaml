@@ -1,0 +1,21 @@
+# Render Blueprint Specification for PS 26250
+# Air Power — Dynamic Air Operations & Resource Optimisation
+services:
+  - type: web
+    name: airpower-operations-ps26250
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: "pip install --upgrade pip && pip install -r requirements.txt && python seed_database.py"
+    startCommand: "python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHONIOENCODING
+        value: utf-8
+      - key: PYTHONPATH
+        value: .
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        value: sqlite:///./airpower.db
+      - key: APP_NAME
+        value: "Air Power - Dynamic Air Operations (PS 26250)"

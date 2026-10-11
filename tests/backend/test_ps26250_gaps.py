@@ -23,18 +23,18 @@ client = TestClient(app)
 
 @pytest.fixture(scope="module")
 def admin_credentials():
-    return {"username": "admin", "password": "Admin@Demo2026!"}
+    return {"username": "admin", "password": "123"}
 
 
 @pytest.fixture(scope="module")
 def analyst_token():
-    res = client.post("/api/auth/login", json={"username": "analyst", "password": "Analyst@Demo2026!"})
+    res = client.post("/api/auth/login", json={"username": "analyst", "password": "123"})
     return res.json()["access_token"]
 
 
 @pytest.fixture(scope="module")
 def viewer_token():
-    res = client.post("/api/auth/login", json={"username": "viewer", "password": "Viewer@Demo2026!"})
+    res = client.post("/api/auth/login", json={"username": "viewer", "password": "123"})
     return res.json()["access_token"]
 
 
@@ -327,30 +327,20 @@ def test_gap_9_unauthorized_user_rejected(viewer_token):
     assert res_whatif_viewer.status_code == 403
 
 
-# ── TEST 10: MFA-enabled admin -> MFA required ────────────────────────────────
-def test_gap_10_mfa_enabled_admin_requires_mfa(admin_credentials):
+# ── TEST 10: Admin direct login without MFA ───────────────────────────────────
+def test_gap_10_admin_direct_login_no_mfa(admin_credentials):
     db = next(get_db())
     admin = db.query(User).filter(User.username == "admin").first()
-    assert admin.mfa_enabled is True
-    assert admin.mfa_secret is not None
+    assert admin.mfa_enabled is False
 
-    # Step 1: Login with username & password
-    res_step1 = client.post("/api/auth/login", json=admin_credentials)
-    assert res_step1.status_code == 200
-    data = res_step1.json()
+    # Login with username & password directly yields access_token
+    res_login = client.post("/api/auth/login", json=admin_credentials)
+    assert res_login.status_code == 200
+    data = res_login.json()
 
-    # Must require MFA and provide temp_token (NOT full access_token)
-    assert data["requires_mfa"] is True
-    assert "temp_token" in data
-    assert "access_token" not in data or data["access_token"] is None
-    temp_token = data["temp_token"]
+    assert data.get("requires_mfa") is not True
+    assert "access_token" in data and data["access_token"] is not None
 
-    # Attempting to call protected endpoint with temp_token must fail with 401
-    res_protected = client.get("/api/bases", headers={"Authorization": f"Bearer {temp_token}"})
-    assert res_protected.status_code == 401
-
-    # Step 2: Verification with valid TOTP code succeeds
-    totp_code = pyotp.TOTP(admin.mfa_secret).now()
-    res_step2 = client.post("/api/auth/mfa/verify", json={"temp_token": temp_token, "code": totp_code})
-    assert res_step2.status_code == 200
-    assert "access_token" in res_step2.json()
+    # Call protected endpoint with access_token succeeds
+    res_protected = client.get("/api/bases", headers={"Authorization": f"Bearer {data['access_token']}"})
+    assert res_protected.status_code == 200

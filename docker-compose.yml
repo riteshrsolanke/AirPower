@@ -1,0 +1,26 @@
+﻿version: '3.8'
+
+services:
+  airpower-app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: airpower-ps26250
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - JWT_ALGORITHM=RS256
+      - DATABASE_URL=sqlite:///./airpower.db
+      - ACCESS_TOKEN_EXPIRE_MINUTES=60
+    volumes:
+      - airpower-data:/app/backend/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  airpower-data:

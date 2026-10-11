@@ -347,11 +347,22 @@ def _find_affected_missions(
             if pa.crew_id and pa.crew_id == payload.get("crew_id"):
                 invalidated = True
 
-        # For NEW_PRIORITY_MISSION, AIRSPACE_CLOSURE, FEED_DEGRADED:
-        # no existing assignments are invalidated; only new planning needed
+        elif event_type == EventType.AIRSPACE_CLOSURE:
+            zone_name = effect_data
+            zone = db.query(AirspaceZone).filter(AirspaceZone.name == zone_name).first()
+            if zone and pa.aircraft_id:
+                ac = db.query(Aircraft).filter(Aircraft.id == pa.aircraft_id).first()
+                mission = db.query(Mission).filter(Mission.id == pa.mission_id).first()
+                if ac and mission and ac.base_id:
+                    base = db.query(AirBase).filter(AirBase.id == ac.base_id).first()
+                    ta = mission.target_area or {}
+                    if base and base.latitude is not None and ta.get("lat"):
+                        from backend.app.services.optimizer import _route_intersects_airspace
+                        if _route_intersects_airspace(base.latitude, base.longitude, ta["lat"], ta["lon"], zone):
+                            invalidated = True
+
         elif event_type in (
             EventType.NEW_PRIORITY_MISSION,
-            EventType.AIRSPACE_CLOSURE,
             EventType.FEED_DEGRADED,
         ):
             invalidated = False

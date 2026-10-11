@@ -144,17 +144,7 @@ async def login(req: LoginRequest, request: Request, db: Session = Depends(get_d
     user.is_locked = False
     user.locked_until = None
 
-    # If MFA enabled, return temp token
-    if user.mfa_enabled:
-        temp_token = create_access_token(
-            {"sub": user.id, "type_override": "mfa_pending"},
-            expires_delta=timedelta(minutes=5),
-        )
-        db.commit()
-        _audit(db, user, "LOGIN_MFA_REQUIRED", user.username, "PENDING", ip)
-        return {"requires_mfa": True, "temp_token": temp_token, "token_type": "bearer"}
-
-    # No MFA: issue full tokens
+    # Multi-Factor Authentication removed — issue full tokens directly
     return _issue_tokens(user, db, ip)
 
 

@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Air Power — Predictive Maintenance & Fleet Availability</title>
-  <meta name="description" content="AI-powered predictive maintenance and fleet availability platform for demonstration and training purposes using synthetic data." />
+  <title>Air Power — Dynamic Air Operations & Resource Optimisation (PS 26250)</title>
+  <meta name="description" content="AI-enabled decision-support, multi-source tactical data fusion, predictive analytics and multi-objective optimization for air operations." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -19,92 +19,8 @@
 </head>
 <body>
   <div id="app">
-    <!-- Login Page -->
-    <div id="login-page" class="auth-page">
-      <div class="auth-container">
-        <div class="auth-header">
-          <div class="auth-logo">
-            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M24 4L40 20H32V36H16V20H8L24 4Z" fill="url(#logo-grad)" />
-              <path d="M12 36H36V40H12V36Z" fill="url(#logo-grad)" opacity="0.7"/>
-              <defs>
-                <linearGradient id="logo-grad" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stop-color="#38bdf8"/>
-                  <stop offset="100%" stop-color="#6366f1"/>
-                </linearGradient>
-              </defs>
-            </svg>
-          </div>
-          <h1>Air Power</h1>
-          <p class="auth-subtitle">Predictive Maintenance & Fleet Availability</p>
-          <div class="demo-badge">⚠ Synthetic Demonstration Data</div>
-        </div>
-
-        <div id="login-step" class="auth-form-section active">
-          <h2>Secure Login</h2>
-          <p class="form-hint">Enter your credentials to continue</p>
-          <div id="login-error" class="error-banner hidden"></div>
-
-          <div class="form-group">
-            <label for="login-username">Username or Email</label>
-            <input type="text" id="login-username" placeholder="admin" autocomplete="username" />
-          </div>
-          <div class="form-group">
-            <label for="login-password">Password</label>
-            <div class="input-with-icon">
-              <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" />
-              <button class="icon-btn" onclick="togglePassword('login-password')">👁</button>
-            </div>
-          </div>
-
-          <button class="btn-primary btn-full" id="login-btn" onclick="doLogin()">
-            <span class="btn-text">Sign In</span>
-            <span class="btn-spinner hidden">⟳</span>
-          </button>
-
-          <div class="demo-accounts-hint">
-            <strong>Demo Accounts:</strong><br>
-            admin / Admin@Demo2026! &nbsp;|&nbsp; maintenance_mgr / Maint@Demo2026!<br>
-            analyst / Analyst@Demo2026! &nbsp;|&nbsp; viewer / Viewer@Demo2026!
-          </div>
-        </div>
-
-        <div id="mfa-step" class="auth-form-section">
-          <div class="mfa-icon">🔐</div>
-          <h2>Multi-Factor Authentication</h2>
-          <p class="form-hint">Enter the 6-digit code from your authenticator app</p>
-          <div id="mfa-error" class="error-banner hidden"></div>
-
-          <div class="form-group">
-            <label for="mfa-code">Authentication Code</label>
-            <input type="text" id="mfa-code" placeholder="000000" maxlength="6" 
-                   inputmode="numeric" pattern="[0-9]{6}" class="otp-input"
-                   onkeyup="if(this.value.length===6) doMFAVerify()" />
-          </div>
-          <button class="btn-primary btn-full" onclick="doMFAVerify()">Verify Code</button>
-          
-          <div style="margin-top: 10px; display: flex; gap: 8px;">
-            <button type="button" class="btn-ghost btn-full" style="font-size: 11px; padding: 6px;" onclick="showLoginMFAQr()">📱 Show QR / Key</button>
-            <button type="button" class="btn-ghost btn-full" style="font-size: 11px; padding: 6px;" onclick="autoFillDemoTOTP()">⚡ Fill Demo TOTP</button>
-          </div>
-          
-          <div id="login-mfa-qr-box" class="hidden" style="margin-top: 10px; padding: 10px; background: rgba(15,23,42,0.85); border: 1px solid rgba(56,189,248,0.25); border-radius: 6px; text-align: center;">
-            <div id="login-mfa-qr-img"></div>
-            <div id="login-mfa-secret-text" style="font-family: monospace; font-size: 10px; margin-top: 6px; color: #38bdf8; word-break: break-all;"></div>
-            <p style="font-size: 10px; color: #94a3b8; margin-top: 4px;">Scan with Google Authenticator or enter key manually.</p>
-          </div>
-
-          <button class="btn-ghost btn-full" style="margin-top: 8px;" onclick="showLoginStep()">← Back to Login</button>
-        </div>
-
-        <div class="auth-footer">
-          <p>🔒 Prototype for training and demonstration using synthetic data.<br>Not connected to operational defence systems.</p>
-        </div>
-      </div>
-    </div>
-
     <!-- Main App Shell -->
-    <div id="main-app" class="hidden">
+    <div id="main-app">
       <!-- Sidebar -->
       <nav id="sidebar" class="sidebar">
         <div class="sidebar-header">
@@ -123,10 +39,10 @@
         </div>
 
         <div class="sidebar-user">
-          <div class="user-avatar" id="sidebar-avatar">A</div>
+          <div class="user-avatar" id="sidebar-avatar">C</div>
           <div class="user-info">
-            <div id="sidebar-username" class="user-name">User</div>
-            <div id="sidebar-role" class="user-role">VIEWER</div>
+            <div id="sidebar-username" class="user-name">Operations Commander</div>
+            <div id="sidebar-role" class="user-role">ADMIN (FULL ACCESS)</div>
           </div>
         </div>
 
@@ -178,7 +94,7 @@
         </ul>
 
         <div class="sidebar-footer">
-          <button class="btn-logout" onclick="doLogout()">⏻ Logout</button>
+          <div style="font-size: 11px; color: #64748b; text-align: center; padding: 6px; letter-spacing: 0.5px;">⚡ OPERATIONAL DIRECT MODE</div>
         </div>
       </nav>
 
@@ -897,6 +813,20 @@
                   <div class="loading">Loading...</div>
                 </div>
               </div>
+
+              <!-- JDL MULTI-SOURCE FUSION & FEED STATUS -->
+              <div class="card" style="grid-column: span 3; margin-top: 1rem;">
+                <div class="card-header">
+                  <div style="display:flex; align-items:center; gap:0.75rem;">
+                    <h3>Multi-Source Data Fusion & Sensor Trust (JDL Levels 1–3)</h3>
+                    <span class="card-badge" id="fusion-mode-badge" style="background: rgba(34, 197, 94, 0.2); color: #22c55e;">Nominal</span>
+                  </div>
+                  <button class="btn-sm" onclick="fetchFusedPicture()">⟳ Poll Fused Feeds</button>
+                </div>
+                <div id="fused-picture-container" style="padding: 1.25rem;">
+                  <div class="loading">Loading fused tactical feed...</div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -927,11 +857,34 @@
               </div>
             </div>
 
+            <!-- 90-SECOND SCRIPTED RETASKING SHOWCASE -->
+            <div class="card" style="margin-bottom: 1.5rem; background: linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.95)); border: 1px solid #38bdf8; box-shadow: 0 4px 20px rgba(56, 189, 248, 0.15);">
+              <div class="card-header" style="border-bottom: 1px solid rgba(56, 189, 248, 0.2); padding-bottom: 0.75rem;">
+                <div style="display:flex; align-items:center; gap:0.75rem;">
+                  <span style="font-size: 1.3rem;">⚡</span>
+                  <div>
+                    <h3 style="margin:0; color:#38bdf8;">Evaluator Showcase: 90-Second Dynamic Retasking Drill</h3>
+                    <p style="margin:0; font-size:0.8rem; color:#94a3b8;">Pop-up SA-21 SAM threat → In-flight unserviceability → Automated re-plan & plan diff</p>
+                  </div>
+                </div>
+                <button class="btn-primary" id="btn-run-90s-demo" onclick="triggerScriptedShowcase()" style="background: linear-gradient(135deg, #0284c7, #6366f1); font-weight: 600; padding: 0.5rem 1.25rem;">
+                  🚀 Execute 90s Live Retasking
+                </button>
+              </div>
+              <div id="showcase-status-box" style="padding: 1rem; display:none;">
+                <div id="showcase-steps-progress" style="display: flex; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap;"></div>
+                <div id="showcase-diff-details" style="background: rgba(2, 6, 23, 0.7); border: 1px solid var(--border); border-radius: 6px; padding: 1rem;"></div>
+              </div>
+            </div>
+
             <div class="dashboard-grid">
               <div class="card" style="grid-column: span 3;">
                 <div class="card-header">
                   <h3>Generated Mission Plans (PuLP / CBC MILP)</h3>
-                  <button class="btn-sm" onclick="fetchPlans()">Refresh</button>
+                  <div style="display:flex; gap:0.5rem;">
+                    <button class="btn-sm btn-secondary" onclick="fetchOptimizerBenchmark()">📊 Compare Algorithms</button>
+                    <button class="btn-sm" onclick="fetchPlans()">Refresh</button>
+                  </div>
                 </div>
                 <div class="table-responsive">
                   <table class="data-table" id="plans-table">
@@ -953,6 +906,33 @@
                   </table>
                 </div>
               </div>
+            </div>
+
+            <!-- SORTIE SEQUENCING & GANTT TIMELINE -->
+            <div class="dashboard-grid" style="margin-top: 1.5rem;">
+              <div class="card" style="grid-column: span 3;">
+                <div class="card-header">
+                  <div style="display:flex; align-items:center; gap:0.75rem;">
+                    <h3>Sortie Sequencing & Wave Gantt Timeline</h3>
+                    <span class="card-badge">Time-Indexed $x[m,a,w]$</span>
+                  </div>
+                  <span style="font-size:0.8rem; color:#94a3b8;">Operational Waves (W1, W2, W3) with 1.5h turnaround/turnover intervals</span>
+                </div>
+                <div style="padding: 1.25rem;">
+                  <div id="gantt-chart-container" style="min-height: 180px; overflow-x: auto;">
+                    <div class="loading">Loading sortie schedule...</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- OPTIMIZER BENCHMARK MODAL / PANEL -->
+            <div id="benchmark-panel" class="card hidden" style="margin-top: 1.5rem; border: 1px solid #10b981;">
+              <div class="card-header">
+                <h3 style="color: #10b981;">Optimizer Benchmark: MILP vs Greedy vs Manual Baseline</h3>
+                <button class="btn-sm" onclick="document.getElementById('benchmark-panel').classList.add('hidden')">✕ Close</button>
+              </div>
+              <div id="benchmark-results" style="padding: 1.25rem;"></div>
             </div>
 
             <!-- OPERATIONAL WHAT-IF PLANNING SANDBOX (Phase 1) -->

@@ -379,6 +379,8 @@ def run_operational_whatif(
         wt_by_code=wt_by_code,
         base_capacities=base_capacities,
         base_names=base_names,
+        airspaces=ctx.get("airspaces", []),
+        bases_dict=ctx.get("bases_dict", {}),
         plan_type=objective_mode,
     )
 

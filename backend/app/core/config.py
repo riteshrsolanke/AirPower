@@ -22,13 +22,47 @@ class Settings:
         "DATABASE_URL", "sqlite:///./airpower.db"
     )
 
-    # JWT Authentication - Phase 6 Hardening (RS256)
-    try:
-        PRIVATE_KEY: str = (CORE_DIR / "private.pem").read_text()
-        PUBLIC_KEY: str  = (CORE_DIR / "public.pem").read_text()
-    except FileNotFoundError:
-        PRIVATE_KEY = "fallback"
-        PUBLIC_KEY = "fallback"
+    @classmethod
+    def _init_keys(cls):
+        priv_path = CORE_DIR / "private.pem"
+        pub_path = CORE_DIR / "public.pem"
+        if priv_path.exists() and pub_path.exists():
+            try:
+                return priv_path.read_text(), pub_path.read_text()
+            except Exception:
+                pass
+        try:
+            from cryptography.hazmat.primitives.asymmetric import rsa
+            from cryptography.hazmat.primitives import serialization
+            private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            priv_pem = private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption()
+            ).decode("utf-8")
+            pub_pem = private_key.public_key().public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            ).decode("utf-8")
+            priv_path.write_text(priv_pem)
+            pub_path.write_text(pub_pem)
+            return priv_pem, pub_pem
+        except Exception:
+            return "fallback_private", "fallback_public"
+
+    _keys = None
+
+    @property
+    def PRIVATE_KEY(self) -> str:
+        if Settings._keys is None:
+            Settings._keys = Settings._init_keys()
+        return Settings._keys[0]
+
+    @property
+    def PUBLIC_KEY(self) -> str:
+        if Settings._keys is None:
+            Settings._keys = Settings._init_keys()
+        return Settings._keys[1]
 
     ALGORITHM: str = "RS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))

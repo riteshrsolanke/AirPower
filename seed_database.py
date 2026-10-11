@@ -68,7 +68,7 @@ def create_demo_accounts(db):
         {
             "email": "admin@demo.local",
             "username": "admin",
-            "password": "Admin@Demo2026!",
+            "password": "123",
             "role": UserRole.ADMIN,
             "full_name": "Demo Administrator",
             "clearance_level": "TOP SECRET",
@@ -77,7 +77,7 @@ def create_demo_accounts(db):
         {
             "email": "maintenance@demo.local",
             "username": "maintenance_mgr",
-            "password": "Maint@Demo2026!",
+            "password": "123",
             "role": UserRole.MAINTENANCE_MANAGER,
             "full_name": "Maintenance Manager",
             "clearance_level": "SECRET",
@@ -86,7 +86,7 @@ def create_demo_accounts(db):
         {
             "email": "analyst@demo.local",
             "username": "analyst",
-            "password": "Analyst@Demo2026!",
+            "password": "123",
             "role": UserRole.ANALYST,
             "full_name": "Data Analyst",
             "clearance_level": "UNCLASSIFIED",
@@ -95,7 +95,7 @@ def create_demo_accounts(db):
         {
             "email": "viewer@demo.local",
             "username": "viewer",
-            "password": "Viewer@Demo2026!",
+            "password": "123",
             "role": UserRole.VIEWER,
             "full_name": "Read-Only Viewer",
         },
@@ -117,16 +117,21 @@ def create_demo_accounts(db):
             )
             db.add(user)
             created.append(acc)
+        else:
+            existing.hashed_password = hash_password(acc["password"])
+            existing.is_active = True
+            existing.failed_login_attempts = 0
+            existing.is_locked = False
 
     db.commit()
 
     print("\n" + "=" * 60)
-    print("  DEMO CREDENTIALS (Development Only)")
-    print("  DO NOT USE IN PRODUCTION")
+    print("  DEMO CREDENTIALS (Development & Evaluation)")
+    print("  ALL PASSWORDS SET TO: 123")
     print("=" * 60)
     for acc in accounts:
         role_str = acc["role"].value.ljust(20)
-        print(f"  {role_str} | {acc['username']:20} | {acc['password']}")
+        print(f"  {role_str} | {acc['username']:20} | 123")
     print("=" * 60 + "\n")
 
 

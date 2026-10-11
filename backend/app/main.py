@@ -143,10 +143,32 @@ async def health_check():
     }
 
 
+import os
+from fastapi.responses import FileResponse
+
+FRONTEND_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend"))
+
 @app.get("/")
 async def root():
+    index_file = os.path.join(FRONTEND_PATH, "index.html")
+    if os.path.isfile(index_file):
+        return FileResponse(index_file)
     return {
-        "message": "Air Power Predictive Maintenance Platform API",
+        "message": "Air Power Dynamic Air Operations Platform API",
         "docs": "/api/docs",
         "disclaimer": settings.SECURITY_DISCLAIMER,
     }
+
+@app.get("/styles.css")
+async def get_styles():
+    css_file = os.path.join(FRONTEND_PATH, "styles.css")
+    if os.path.isfile(css_file):
+        return FileResponse(css_file, media_type="text/css")
+    return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+@app.get("/app.js")
+async def get_app_js():
+    js_file = os.path.join(FRONTEND_PATH, "app.js")
+    if os.path.isfile(js_file):
+        return FileResponse(js_file, media_type="application/javascript")
+    return JSONResponse(status_code=404, content={"detail": "Not found"})

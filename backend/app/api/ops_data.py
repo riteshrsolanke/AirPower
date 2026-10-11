@@ -416,3 +416,15 @@ async def ingest_feed_data(
     Ingest data from an external feed. Normalizes data and triggers events.
     """
     return ingest_feed(db, feed_name, payload, current_user.id)
+
+
+@feeds_router.get("/fused-picture")
+async def get_fused_picture(
+    current_user: User = Depends(require_any_authenticated),
+    db: Session = Depends(get_db)
+):
+    """
+    Return JDL Levels 1-3 Common Operational Data Picture with source confidence decay.
+    """
+    from backend.app.services.fusion import get_fused_tactical_picture
+    return get_fused_tactical_picture(db)
