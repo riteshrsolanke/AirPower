@@ -19,7 +19,7 @@ const state = {
     full_name: 'Operations Commander',
     clearance_level: 'TOP SECRET'
   },
-  currentPage: 'picture',
+  currentPage: 'dashboard',
   currentAircraftId: null,
   sensorData: {},
   charts: {},
@@ -193,7 +193,7 @@ async function doLogout() {
   clearTokens();
   await autoAuthenticate();
   toast('Operational session refreshed.', 'info');
-  navigate(state.currentPage || 'picture');
+  navigate(state.currentPage || 'dashboard');
 }
 
 function showApp() {
@@ -219,7 +219,7 @@ function showApp() {
   // Populate aircraft selects
   loadAircraftSelects();
 
-  navigate(state.currentPage || 'picture');
+  navigate(state.currentPage || 'dashboard');
   loadAlertBadge();
   setInterval(loadAlertBadge, 30000);
 }
